@@ -3,13 +3,221 @@
 
 Parser::Parser(TokenParser* tokenParser, CompilationUnit* compilationUnit)
 {
+    // Unary prefix operators
+    mUnaryPrefixOperatorsMap.emplace("++", OperatorInfo{ "++", 3, EOperatorAssociativity::LeftToRight });
+    mUnaryPrefixOperatorsMap.emplace("--", OperatorInfo{ "--", 3, EOperatorAssociativity::LeftToRight });
+    mUnaryPrefixOperatorsMap.emplace("!", OperatorInfo{ "!", 3, EOperatorAssociativity::LeftToRight });
+    mUnaryPrefixOperatorsMap.emplace("+", OperatorInfo{ "+", 3, EOperatorAssociativity::LeftToRight });
+    mUnaryPrefixOperatorsMap.emplace("-", OperatorInfo{ "-", 3, EOperatorAssociativity::LeftToRight });
+
+    // Unary postfix operators
+    mUnaryPostfixOperatorsMap.emplace("++", OperatorInfo{ "++", 2, EOperatorAssociativity::LeftToRight });
+    mUnaryPostfixOperatorsMap.emplace("--", OperatorInfo{ "--", 2, EOperatorAssociativity::LeftToRight });
+    mUnaryPostfixOperatorsMap.emplace("*", OperatorInfo{ "*", 3, EOperatorAssociativity::RightToLeft });
+
+    // Binary operators
+    mBinaryOperatorsMap.emplace("->", OperatorInfo{ "->", 2, EOperatorAssociativity::LeftToRight });
+    mBinaryOperatorsMap.emplace("*", OperatorInfo{ "*", 4, EOperatorAssociativity::LeftToRight });
+    mBinaryOperatorsMap.emplace("/", OperatorInfo{ "/", 4, EOperatorAssociativity::LeftToRight });
+    mBinaryOperatorsMap.emplace("+", OperatorInfo{ "+", 5, EOperatorAssociativity::LeftToRight });
+    mBinaryOperatorsMap.emplace("-", OperatorInfo{ "-", 5, EOperatorAssociativity::LeftToRight });
+    mBinaryOperatorsMap.emplace(">", OperatorInfo{ ">", 7, EOperatorAssociativity::LeftToRight });
+    mBinaryOperatorsMap.emplace("<", OperatorInfo{ "<", 7, EOperatorAssociativity::LeftToRight });
+    mBinaryOperatorsMap.emplace(">=", OperatorInfo{ ">=", 7, EOperatorAssociativity::LeftToRight });
+    mBinaryOperatorsMap.emplace("<=", OperatorInfo{ "<=", 7, EOperatorAssociativity::LeftToRight });
+    mBinaryOperatorsMap.emplace("==", OperatorInfo{ "==", 8, EOperatorAssociativity::LeftToRight });
+    mBinaryOperatorsMap.emplace("!=", OperatorInfo{ "!=", 8, EOperatorAssociativity::LeftToRight });
+    mBinaryOperatorsMap.emplace("&&", OperatorInfo{ "&&", 12, EOperatorAssociativity::LeftToRight });
+    mBinaryOperatorsMap.emplace("^^", OperatorInfo{ "^^", 13, EOperatorAssociativity::LeftToRight });
+    mBinaryOperatorsMap.emplace("||", OperatorInfo{ "||", 14, EOperatorAssociativity::LeftToRight });
+    mBinaryOperatorsMap.emplace("=", OperatorInfo{ "=", 16, EOperatorAssociativity::LeftToRight });
+    mBinaryOperatorsMap.emplace("+=", OperatorInfo{ "+=", 16, EOperatorAssociativity::LeftToRight });
+    mBinaryOperatorsMap.emplace("-=", OperatorInfo{ "-=", 16, EOperatorAssociativity::LeftToRight });
+
     mTokenParser = tokenParser;
     mCompilationUnit = compilationUnit;
 }
 
-Parser::EParseResult Parser::ParseExpression(Expression** outNode)
+Parser::EParseResult Parser::ParseBinaryOperator(OperatorInfo& outOperator)
 {
+    Token currToken = mTokenParser->GetCurrentToken();
+    if (currToken.mTokenType != ETokenType::Operator)
+        return EParseResult::NotParsed;
+
+    auto opIter = mBinaryOperatorsMap.find(currToken.mTokenString);
+    if (opIter != mBinaryOperatorsMap.end())
+    {
+        outOperator = opIter->second;
+        mTokenParser->Advance();
+        return EParseResult::Parsed;
+    }
     return EParseResult::NotParsed;
+}
+
+Parser::EParseResult Parser::ParseUnaryPostfixOperator(OperatorInfo& outOperator)
+{
+    Token currToken = mTokenParser->GetCurrentToken();
+    if (currToken.mTokenType != ETokenType::Operator)
+        return EParseResult::NotParsed;
+
+    auto opIter = mUnaryPrefixOperatorsMap.find(currToken.mTokenString);
+    if (opIter != mUnaryPrefixOperatorsMap.end())
+    {
+        outOperator = opIter->second;
+        mTokenParser->Advance();
+        return EParseResult::Parsed;
+    }
+    return EParseResult::NotParsed;
+}
+
+Parser::EParseResult Parser::ParseUnaryPrefixOperator(OperatorInfo& outOperator)
+{
+    Token currToken = mTokenParser->GetCurrentToken();
+    if (currToken.mTokenType != ETokenType::Operator)
+        return EParseResult::NotParsed;
+
+    auto opIter = mUnaryPostfixOperatorsMap.find(currToken.mTokenString);
+    if (opIter != mUnaryPostfixOperatorsMap.end())
+    {
+        outOperator = opIter->second;
+        mTokenParser->Advance();
+        return EParseResult::Parsed;
+    }
+    return EParseResult::NotParsed;
+}
+
+Parser::EParseResult Parser::ParseAtom(Expression** outExpression)
+{
+    // Try parse unary prefix operator
+    OperatorInfo prefixOp;
+    EParseResult prefixOpRes = ParseUnaryPrefixOperator(prefixOp);
+
+    // Parse identifier/literal
+    Expression* atomExpression = nullptr;
+
+    Token currToken = mTokenParser->GetCurrentToken();
+    switch (currToken.mTokenType)
+    {
+    case ETokenType::BooleanLiteral:
+    case ETokenType::FloatLiteral:
+    case ETokenType::IntegerLiteral:
+    {
+        atomExpression = new LiteralExpression();
+        ((LiteralExpression*)atomExpression)->mToken = currToken;
+        mTokenParser->Advance();
+        break;
+    }
+    case ETokenType::Operator:
+    {
+        if (currToken.mTokenString == "(")
+        {
+            mTokenParser->Advance();
+            EParseResult res = ParseExpression(mDefaultOuterOperatorInfo, &atomExpression);
+            if (res != EParseResult::Parsed)
+            {
+                OnError("Failed to parse atom. Invalid expression after (");
+                return EParseResult::Error;
+            }
+            mTokenParser->Advance();
+        }
+        else
+        {
+            return EParseResult::NotParsed;
+        }
+        break;
+    }
+    case ETokenType::Identifier:
+    {
+        VariableAccessExpression* identifierExpression = new VariableAccessExpression();
+        identifierExpression->mVariable = currToken.mTokenString;
+        atomExpression = identifierExpression;
+        mTokenParser->Advance();
+        break;
+    }
+    default:
+    {
+        OnError("Unhandled token atom type");
+        return EParseResult::Error;
+    }
+    }
+
+    // Try parse unary postfix operator
+    OperatorInfo postfixOp;
+    EParseResult postfixOpRes = ParseUnaryPostfixOperator(prefixOp);
+
+    if (prefixOpRes == EParseResult::Parsed)
+    {
+        UnaryOperationExpression* unaryExpr = new UnaryOperationExpression();
+        unaryExpr->mOperator = prefixOp.mOperator;
+        unaryExpr->mOperand = atomExpression;
+        unaryExpr->mUnaryType = EUnaryExpressionType::Prefixx;
+        atomExpression = unaryExpr;
+    }
+
+    if (postfixOpRes == EParseResult::Parsed)
+    {
+        UnaryOperationExpression* unaryExpr = new UnaryOperationExpression();
+        unaryExpr->mOperator = postfixOp.mOperator;
+        unaryExpr->mOperand = atomExpression;
+        unaryExpr->mUnaryType = EUnaryExpressionType::Postfix;
+        atomExpression = unaryExpr;
+    }
+
+    *outExpression = atomExpression;
+
+    return EParseResult::Parsed;
+}
+
+Parser::EParseResult Parser::ParseExpression(const OperatorInfo& inOperator, Expression** outExpression)
+{
+    while (mTokenParser->GetCurrentToken().mTokenString != ";")
+    {
+        // Parse atom
+        EParseResult atomParseResult = ParseAtom(outExpression);
+        if (atomParseResult != EParseResult::Parsed)
+        {
+            return atomParseResult;
+        }
+
+        if (mTokenParser->GetCurrentToken().mTokenString == ";")
+            break;
+
+        // Parse operator
+        Token operatorToken = mTokenParser->GetCurrentToken();
+        OperatorInfo operatorInfo;
+        EParseResult binaryOpRes = ParseBinaryOperator(operatorInfo);
+        if (binaryOpRes == EParseResult::Parsed)
+        {
+            if (operatorInfo.mPrecedence < inOperator.mPrecedence) // TODO: Operator associativity - need that for ternary operator
+            {
+                Expression* rightExpr = nullptr;
+                EParseResult subExprParseResult = ParseExpression(operatorInfo, &rightExpr);
+                if (subExprParseResult == EParseResult::Parsed)
+                {
+                    BinaryOperationExpression* opExpr = new BinaryOperationExpression();
+                    opExpr->mOperator = operatorInfo.mOperator;
+                    opExpr->mLeftOperand = *outExpression;
+                    opExpr->mRightOperand = rightExpr;
+                    *outExpression = opExpr;
+                }
+                else
+                {
+                    return EParseResult::Error;
+                }
+            }
+            else
+            {
+                break;
+            }
+        }
+        else
+        {
+            OnError("Expected binary operator");
+            return EParseResult::Error;
+        }
+    }
+
+    return EParseResult::Parsed;
 }
 
 Parser::EParseResult Parser::ParseExpressionStatement(Node** outNode)
@@ -29,7 +237,7 @@ Parser::EParseResult Parser::ParseExpressionStatement(Node** outNode)
     *outNode = varDefNode;
 
     // Parse assignment expression
-    EParseResult exprResult = ParseExpression(&varDefNode->mExpression);
+    EParseResult exprResult = ParseExpression(mDefaultOuterOperatorInfo, &varDefNode->mExpression);
     if (exprResult != EParseResult::Parsed)
     {
         OnError("Invalid variable assignment expression.");
@@ -64,15 +272,14 @@ Parser::EParseResult Parser::ParseVariableDefinition(Node** outNode)
     if (thirdToken.mTokenString == ";")
         return EParseResult::Parsed;
 
-    mTokenParser->Advance();
-
     // Parse assignment expression
-    EParseResult exprResult = ParseExpression(&varDefNode->mExpression);
+    EParseResult exprResult = ParseExpression(mDefaultOuterOperatorInfo, &varDefNode->mExpression);
     if (exprResult != EParseResult::Parsed)
     {
         OnError("Invalid variable assignment expression.");
         return EParseResult::Error;
     }
+    mTokenParser->Advance(); // skip over ;
 
     return EParseResult::Parsed;
 }
@@ -302,6 +509,9 @@ void PrintNodes(Node* node, int indents)
         StructDefinition* structNode = dynamic_cast<StructDefinition*>(currNode);
         FunctionDefinition* funcNode = dynamic_cast<FunctionDefinition*>(currNode);
         VarDefStatement* varDefNode = dynamic_cast<VarDefStatement*>(currNode);
+        LiteralExpression* literalExpr = dynamic_cast<LiteralExpression*>(currNode);
+        VariableAccessExpression* varExpr = dynamic_cast<VariableAccessExpression*>(currNode);
+        BinaryOperationExpression* binExpr = dynamic_cast<BinaryOperationExpression*>(currNode);
 
         if (structNode != nullptr)
         {
@@ -317,6 +527,23 @@ void PrintNodes(Node* node, int indents)
         else if (varDefNode != nullptr)
         {
             LOG_INFO() << indentString << "Variable: " << varDefNode->mVariableType << " " << varDefNode->mVariableName;
+            if (varDefNode->mExpression != nullptr)
+                LOG_INFO() << indentString << " =";
+            PrintNodes(varDefNode->mExpression, indents + 1);
+        }
+        else if (literalExpr != nullptr)
+        {
+            LOG_INFO() << indentString << literalExpr->mToken.mTokenString;
+        }
+        else if (varExpr != nullptr)
+        {
+            LOG_INFO() << indentString << varExpr->mVariable;
+        }
+        else if (binExpr != nullptr)
+        {
+            PrintNodes(binExpr->mLeftOperand, indents);
+            LOG_INFO() << indentString << binExpr->mOperator;
+            PrintNodes(binExpr->mRightOperand, indents);
         }
 
         currNode = node->mNext;

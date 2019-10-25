@@ -37,13 +37,17 @@ enum class EExpressionType
     BinaryOperation, UnaryOperation, Literal, VariableAccess, FunctionCall
 };
 
+enum class EUnaryExpressionType
+{
+    Prefixx, Postfix
+};
+
 /**
 * An expression (such as "3", "myFunc()", "a == b", etc.)
 */
 class Expression : public Node
 {
 public:
-    std::string mValueType; // TODO
     virtual EExpressionType GetExpressionType() const = 0;
 };
 
@@ -61,6 +65,7 @@ class UnaryOperationExpression : public Expression
 public:
     std::string mOperator;
     Expression* mOperand;
+    EUnaryExpressionType mUnaryType;
     virtual EExpressionType GetExpressionType() const override { return EExpressionType::UnaryOperation; }
 };
 

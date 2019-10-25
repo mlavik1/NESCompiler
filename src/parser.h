@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <set>
 #include <stack>
+#include "operator.h"
 
 class Parser
 {
@@ -22,7 +23,18 @@ private:
     TokenParser* mTokenParser;
     CompilationUnit* mCompilationUnit;
 
-    EParseResult ParseExpression(Expression** outNode);
+    std::unordered_map<std::string, OperatorInfo> mUnaryPrefixOperatorsMap;
+    std::unordered_map<std::string, OperatorInfo> mUnaryPostfixOperatorsMap;
+    std::unordered_map<std::string, OperatorInfo> mBinaryOperatorsMap;
+
+    OperatorInfo mDefaultOuterOperatorInfo = { "", 999, EOperatorAssociativity::LeftToRight };
+
+    EParseResult ParseBinaryOperator(OperatorInfo& outOperator);
+    EParseResult ParseUnaryPostfixOperator(OperatorInfo& outOperator);
+    EParseResult ParseUnaryPrefixOperator(OperatorInfo& outOperator);
+    EParseResult ParseAtom(Expression** outExpression);
+
+    EParseResult ParseExpression(const OperatorInfo& inOperator, Expression** outExpression);
     EParseResult ParseExpressionStatement(Node** outNode);
     EParseResult ParseVariableDefinition(Node** outNode);
     EParseResult ParseStatement(Node** outNode);
