@@ -60,8 +60,8 @@ Parser::EParseResult Parser::ParseUnaryPostfixOperator(OperatorInfo& outOperator
     if (currToken.mTokenType != ETokenType::Operator)
         return EParseResult::NotParsed;
 
-    auto opIter = mUnaryPrefixOperatorsMap.find(currToken.mTokenString);
-    if (opIter != mUnaryPrefixOperatorsMap.end())
+    auto opIter = mUnaryPostfixOperatorsMap.find(currToken.mTokenString);
+    if (opIter != mUnaryPostfixOperatorsMap.end())
     {
         outOperator = opIter->second;
         mTokenParser->Advance();
@@ -76,8 +76,8 @@ Parser::EParseResult Parser::ParseUnaryPrefixOperator(OperatorInfo& outOperator)
     if (currToken.mTokenType != ETokenType::Operator)
         return EParseResult::NotParsed;
 
-    auto opIter = mUnaryPostfixOperatorsMap.find(currToken.mTokenString);
-    if (opIter != mUnaryPostfixOperatorsMap.end())
+    auto opIter = mUnaryPrefixOperatorsMap.find(currToken.mTokenString);
+    if (opIter != mUnaryPrefixOperatorsMap.end())
     {
         outOperator = opIter->second;
         mTokenParser->Advance();
@@ -128,8 +128,8 @@ Parser::EParseResult Parser::ParseAtom(Expression** outExpression)
     }
     case ETokenType::Identifier:
     {
-        VariableAccessExpression* identifierExpression = new VariableAccessExpression();
-        identifierExpression->mVariable = currToken.mTokenString;
+        IdentifierExpression* identifierExpression = new IdentifierExpression();
+        identifierExpression->mIdentifier = currToken.mTokenString;
         atomExpression = identifierExpression;
         mTokenParser->Advance();
         break;
@@ -264,8 +264,8 @@ Parser::EParseResult Parser::ParseVariableDefinition(Node** outNode)
 
     // Create node
     VarDefStatement* varDefNode = new VarDefStatement();
-    varDefNode->mVariableType = typeToken.mTokenString;
-    varDefNode->mVariableName = nameToken.mTokenString;
+    varDefNode->mType = typeToken.mTokenString;
+    varDefNode->mName = nameToken.mTokenString;
     *outNode = varDefNode;
 
     // Only declaration?
@@ -341,8 +341,8 @@ Parser::EParseResult Parser::ParseFunctionDefinition(Node** outNode)
         }
 
         VarDefStatement* param = new VarDefStatement();
-        param->mVariableType = paramIdentifier.mTokenString;
-        param->mVariableName = paramName.mTokenString;
+        param->mType = paramIdentifier.mTokenString;
+        param->mName = paramName.mTokenString;
         *currParamNode = param;
         currParamNode = &param->mNext;
     }
@@ -369,6 +369,7 @@ Parser::EParseResult Parser::ParseFunctionDefinition(Node** outNode)
                 OnError("Failed to parse function body.");
                 return EParseResult::Error;
             }
+            currNodePtr = &(*currNodePtr)->mNext;
         }
     }
     else
@@ -510,7 +511,7 @@ void PrintNodes(Node* node, int indents)
         FunctionDefinition* funcNode = dynamic_cast<FunctionDefinition*>(currNode);
         VarDefStatement* varDefNode = dynamic_cast<VarDefStatement*>(currNode);
         LiteralExpression* literalExpr = dynamic_cast<LiteralExpression*>(currNode);
-        VariableAccessExpression* varExpr = dynamic_cast<VariableAccessExpression*>(currNode);
+        IdentifierExpression* varExpr = dynamic_cast<IdentifierExpression*>(currNode);
         BinaryOperationExpression* binExpr = dynamic_cast<BinaryOperationExpression*>(currNode);
 
         if (structNode != nullptr)
@@ -526,7 +527,7 @@ void PrintNodes(Node* node, int indents)
         }
         else if (varDefNode != nullptr)
         {
-            LOG_INFO() << indentString << "Variable: " << varDefNode->mVariableType << " " << varDefNode->mVariableName;
+            LOG_INFO() << indentString << "Variable: " << varDefNode->mType << " " << varDefNode->mName;
             if (varDefNode->mExpression != nullptr)
                 LOG_INFO() << indentString << " =";
             PrintNodes(varDefNode->mExpression, indents + 1);
@@ -537,7 +538,7 @@ void PrintNodes(Node* node, int indents)
         }
         else if (varExpr != nullptr)
         {
-            LOG_INFO() << indentString << varExpr->mVariable;
+            LOG_INFO() << indentString << varExpr->mIdentifier;
         }
         else if (binExpr != nullptr)
         {
@@ -546,26 +547,29 @@ void PrintNodes(Node* node, int indents)
             PrintNodes(binExpr->mRightOperand, indents);
         }
 
-        currNode = node->mNext;
+        currNode = currNode->mNext;
     }
 }
 
 void Parser::Parse()
 {
-    Block* rootNode = new Block();
-
-    Node* currNode = rootNode;
+    Node* currNode = nullptr;
     while (mTokenParser->HasMoreTokens())
     {
         Node* node;
         EParseResult result = ParseNextNode(&node);
         if (result == EParseResult::Parsed)
-            currNode->mNext = node;
+        {
+            if (currNode == nullptr)
+                currNode = mCompilationUnit->mRootNode = node;
+            else
+                currNode->mNext = node;
+        }
         else if (result == EParseResult::Error)
             return;
-
-        PrintNodes(node, 0);
     }
+
+    PrintNodes(mCompilationUnit->mRootNode, 0);
 }
 
 void Parser::OnError(const std::string& errorString)

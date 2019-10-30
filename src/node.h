@@ -3,6 +3,15 @@
 
 #include "tokeniser.h"
 
+enum class ENodeType
+{
+    Block,
+    Statement,
+    FunctionDefinition,
+    StructDefinition,
+    Expression
+};
+
 enum class EStatementType
 {
     VariableDefinition, Expression, ReturnStatement, ControlStatement
@@ -17,6 +26,8 @@ public:
     Node* mNext = nullptr;
 
     virtual ~Node() {}
+
+    virtual ENodeType GetNodeType() = 0;
 };
 
 /**
@@ -27,6 +38,8 @@ class Block : public Node
 {
 public:
     Node * mNode = nullptr;
+
+    virtual ENodeType GetNodeType() override { return ENodeType::Block; };
 };
 
 
@@ -34,12 +47,19 @@ public:
 
 enum class EExpressionType
 {
-    BinaryOperation, UnaryOperation, Literal, VariableAccess, FunctionCall
+    BinaryOperation, UnaryOperation, Literal, Identifier, FunctionCall
 };
 
 enum class EUnaryExpressionType
 {
     Prefixx, Postfix
+};
+
+enum class EIdentifierType
+{
+    Variable, // ex: myInt
+    StructMember, // ex: structInstance.memberVar
+    Namespace // ex: MyStruct.staticVariable
 };
 
 /**
@@ -48,7 +68,10 @@ enum class EUnaryExpressionType
 class Expression : public Node
 {
 public:
+    std::string mValueType;
+
     virtual EExpressionType GetExpressionType() const = 0;
+    virtual ENodeType GetNodeType() override { return ENodeType::Expression; };
 };
 
 class BinaryOperationExpression : public Expression
@@ -76,11 +99,12 @@ public:
     virtual EExpressionType GetExpressionType() const override { return EExpressionType::Literal; }
 };
 
-class VariableAccessExpression : public Expression
+class IdentifierExpression : public Expression
 {
 public:
-    std::string mVariable;
-    virtual EExpressionType GetExpressionType() const override { return EExpressionType::VariableAccess; }
+    std::string mIdentifier;
+    EIdentifierType mIdentifierType;
+    virtual EExpressionType GetExpressionType() const override { return EExpressionType::Identifier; }
 };
 
 class FunctionCallExpression : public Expression
@@ -97,6 +121,8 @@ class Statement : public Node
 {
 public:
     virtual EStatementType GetStatementType() const = 0;
+
+    virtual ENodeType GetNodeType() override { return ENodeType::Statement; };
 };
 
 class ReturnStatement : public Statement
@@ -122,8 +148,8 @@ public:
 class VarDefStatement : public Statement
 {
 public:
-    std::string mVariableType;
-    std::string mVariableName;
+    std::string mType;
+    std::string mName;
     Expression* mExpression = nullptr;
     virtual EStatementType GetStatementType() const override { return EStatementType::VariableDefinition; };
 };
@@ -152,6 +178,8 @@ public:
     std::string mName;
     Node* mParams = nullptr;
     Node* mContent = nullptr;
+
+    virtual ENodeType GetNodeType() override { return ENodeType::FunctionDefinition; };
 };
 
 class StructDefinition : public Node
@@ -159,4 +187,6 @@ class StructDefinition : public Node
 public:
     std::string mName;
     Node* mContent = nullptr;
+
+    virtual ENodeType GetNodeType() override { return ENodeType::StructDefinition; };
 };

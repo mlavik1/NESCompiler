@@ -6,20 +6,41 @@
 #include <unordered_map>
 #include <set>
 #include <stack>
+#include "compilation_unit.h"
 
 class Analyser
 {
 private:
     CompilationUnit* mCompilationUnit;
-    Symbol* mRootSymbol;
-    std::stack<Symbol*> mSymbolTableStack;
-    Symbol* mLastSymbol;
-
+    SymbolList* mSymbolList;
+    SymbolList* mCurrentScope;
     std::set<std::string> mBuiltInTypes;
+    bool mFailed = false;
 
     bool IsTypeIdentifier(const char* inTokenString);
-    Symbol* GetSymbol(const char* symbolName);
-    void AddSymbol(Symbol* symbol);
+    Symbol* GetSymbol(const std::string& symbolName, ESymbolType symbolType);
     void PushSybolStack(Symbol* symbol);
     void PopSybolStack();
+    void AddSymbol(Symbol* symbol);
+    
+    void GenerateUniqueName(Symbol* sym);
+    bool ConvertTypeName(const std::string& typeName, std::string& outUniqueName);
+
+    void VisitBlockNode(Block* node);
+    void VisitStructDefNode(StructDefinition* node);
+    void VisitFuncDefNode(FunctionDefinition* node);
+    void VisitExpressionStatement(ExpressionStatement* node);
+    void VisitVarDefStatement(VarDefStatement* node);
+    void VisitStatementNode(Statement* node);
+    void VisitExpression(Expression* node);
+    void VisitNode(Node* node);
+
+    void RegisterSymbolRecursive(Symbol* sym);
+
+    void OnError();
+
+public:
+    Analyser(CompilationUnit* unit);
+
+    void Analyse();
 };

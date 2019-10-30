@@ -4,6 +4,7 @@
 
 #include "tokeniser.h"
 #include "parser.h"
+#include "analyser.h"
 
 int main(int args, char** argv)
 {
@@ -19,6 +20,9 @@ int main(int args, char** argv)
     
     Parser parser(&tokenParser, &compilationUnit);
     parser.Parse();
+
+    Analyser analyser(&compilationUnit);
+    analyser.Analyse();
 
     return 0;
 }
