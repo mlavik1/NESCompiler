@@ -13,7 +13,8 @@ enum class ESymbolType
     Function = 4,
     Struct = 8,
     FuncParam = 16,
-    All = 31
+    BuiltInType = 32,
+    All = 63
 };
 
 inline ESymbolType operator|(ESymbolType a, ESymbolType b)
@@ -51,7 +52,7 @@ public:
     ESymbolType mSymbolType;
     std::string mName;
     std::string mUniqueName;
-    //  next symbol (in same scope)
+    // next symbol (in same scope)
     Symbol* mNext = nullptr;
     SymbolList* mChildren = nullptr;
     // type name (of variable/function)
@@ -59,7 +60,8 @@ public:
     // address type (relative or absolute)
     ESymAddrType mAddrType = ESymAddrType::None; // None = not set
     // type name (of variable/function)
-    size_t mAddress = 0;
+    uint16_t mAddress = 0;
+    uint16_t mSize = 0;
 };
 
 struct CompilationUnit

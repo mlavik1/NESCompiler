@@ -5,7 +5,7 @@
 #include "tokeniser.h"
 #include "parser.h"
 #include "analyser.h"
-#include "emitter.h"
+#include "code_generator.h"
 
 int main(int args, char** argv)
 {
@@ -25,7 +25,8 @@ int main(int args, char** argv)
     Analyser analyser(&compilationUnit);
     analyser.Analyse();
 
-    Emitter emitter;
+    CodeGenerator generator(&compilationUnit);
+    generator.Generate();
 
     return 0;
 }

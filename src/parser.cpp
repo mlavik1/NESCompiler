@@ -376,7 +376,7 @@ Parser::EParseResult Parser::ParseFunctionDefinition(Node** outNode)
     funcDefNode->mName = nameToken.mTokenString;
 
     // Parse function parameters
-    Node** currParamNode = &funcDefNode->mParams;
+    Node** currParamNode = (Node**)&funcDefNode->mParams;
     while (mTokenParser->GetCurrentToken().mTokenString != ")")
     {
         const Token paramIdentifier = mTokenParser->GetCurrentToken();

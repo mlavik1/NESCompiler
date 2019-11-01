@@ -128,6 +128,8 @@ public:
 class ReturnStatement : public Statement
 {
 public:
+    std::string mFunction; // TODO: do we need this?
+
     Expression * mExpression = nullptr;
 
     virtual EStatementType GetStatementType() const override { return EStatementType::ReturnStatement; };
@@ -178,7 +180,7 @@ class FunctionDefinition : public Node
 public:
     std::string mType;
     std::string mName;
-    Node* mParams = nullptr;
+    VarDefStatement* mParams = nullptr;
     Node* mContent = nullptr;
 
     virtual ENodeType GetNodeType() override { return ENodeType::FunctionDefinition; };

@@ -26,12 +26,12 @@ private:
     void GenerateUniqueName(Symbol* sym);
     bool ConvertTypeName(const std::string& typeName, std::string& outUniqueName);
 
-    void VisitBlockNode(Block* node);
-    void VisitStructDefNode(StructDefinition* node);
-    void VisitFuncDefNode(FunctionDefinition* node);
-    void VisitExpressionStatement(ExpressionStatement* node);
-    void VisitVarDefStatement(VarDefStatement* node);
-    void VisitStatementNode(Statement* node);
+    Symbol* VisitBlockNode(Block* node);
+    Symbol* VisitStructDefNode(StructDefinition* node);
+    Symbol* VisitFuncDefNode(FunctionDefinition* node);
+    Symbol* VisitExpressionStatement(ExpressionStatement* node);
+    Symbol* VisitVarDefStatement(VarDefStatement* node);
+    Symbol* VisitStatementNode(Statement* node);
     void VisitExpression(Expression* node);
     void VisitNode(Node* node);
 

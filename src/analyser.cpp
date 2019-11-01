@@ -44,6 +44,7 @@ void Analyser::PushSybolStack(Symbol* symbol)
     symList->mHead = symList->mTail = nullptr;
     symList->mParent = mCurrentScope;
     symList->mName = mCurrentScope->mName + std::string("_") + symbol->mName;
+    symList->mOwningSymbol = symbol;
     symbol->mChildren = symList;
     mCurrentScope = symList;
 }
@@ -88,12 +89,12 @@ bool Analyser::ConvertTypeName(const std::string& typeName, std::string& outUniq
     return true;
 }
 
-void Analyser::VisitBlockNode(Block* node)
+Symbol* Analyser::VisitBlockNode(Block* node)
 {
-
+    return nullptr;
 }
 
-void Analyser::VisitStructDefNode(StructDefinition* node)
+Symbol* Analyser::VisitStructDefNode(StructDefinition* node)
 {
     Symbol* sym = GetSymbol(node->mName, ESymbolType::Struct);
 
@@ -105,6 +106,7 @@ void Analyser::VisitStructDefNode(StructDefinition* node)
         sym->mSymbolType = ESymbolType::Struct;
         // Generate unique name
         GenerateUniqueName(sym);
+        node->mName = sym->mUniqueName;
     }
 
     if (sym->mChildren != nullptr && node->mContent != nullptr)
@@ -129,9 +131,10 @@ void Analyser::VisitStructDefNode(StructDefinition* node)
     }
 
     AddSymbol(sym);
+    return sym;
 }
 
-void Analyser::VisitFuncDefNode(FunctionDefinition* node)
+Symbol* Analyser::VisitFuncDefNode(FunctionDefinition* node)
 {
     Symbol* sym = GetSymbol(node->mName, ESymbolType::Function);
 
@@ -143,6 +146,7 @@ void Analyser::VisitFuncDefNode(FunctionDefinition* node)
         sym->mSymbolType = ESymbolType::Function;
         // Generate unique name
         GenerateUniqueName(sym);
+        node->mName = sym->mUniqueName;
         // Convert type name
         if (ConvertTypeName(node->mType, sym->mTypeName))
             node->mType = sym->mTypeName;
@@ -152,26 +156,25 @@ void Analyser::VisitFuncDefNode(FunctionDefinition* node)
     {
         LOG_ERROR() << "Function already defined: " << node->mName;
         OnError();
-        return;
+        return nullptr;
     }
 
     if (mCurrentScope->mOwningSymbol != nullptr && (mCurrentScope->mOwningSymbol->mSymbolType & (ESymbolType::Struct | ESymbolType::Namespace)) == ESymbolType::None)
     {
         LOG_ERROR() << "Can't declare function " << node->mName << " in this scope";
         OnError();
-        return;
+        return nullptr;
     }
 
     PushSybolStack(sym);
 
     // Visit param nodes
-    Node* currParam = node->mParams;
+    VarDefStatement* currParam = node->mParams;
     while (currParam != nullptr)
     {
-        VisitNode(currParam);
-        Symbol* paramSym = GetSymbol(((VarDefStatement*)(currParam))->mName, ESymbolType::Variable); // TODO: Maybe VisitNode should return symbol?
+        Symbol* paramSym = VisitStatementNode(currParam);
         paramSym->mSymbolType = ESymbolType::FuncParam;
-        currParam = currParam->mNext;
+        currParam = static_cast<VarDefStatement*>(currParam->mNext);
     }
     // Visit content nodes
     Node* currContent = node->mContent;
@@ -181,17 +184,20 @@ void Analyser::VisitFuncDefNode(FunctionDefinition* node)
         currContent = currContent->mNext;
     }
 
+    // TODO: Check that (non-void) function returns something
+
     PopSybolStack();
 
     AddSymbol(sym);
+    return sym;
 }
 
-void Analyser::VisitExpressionStatement(ExpressionStatement* node)
+Symbol* Analyser::VisitExpressionStatement(ExpressionStatement* node)
 {
-
+    return nullptr; // ???
 }
 
-void Analyser::VisitVarDefStatement(VarDefStatement* node)
+Symbol* Analyser::VisitVarDefStatement(VarDefStatement* node)
 {
     Symbol* sym = GetSymbol(node->mName, ESymbolType::Function);
 
@@ -204,6 +210,7 @@ void Analyser::VisitVarDefStatement(VarDefStatement* node)
         AddSymbol(sym);
         // Generate unique name
         GenerateUniqueName(sym);
+        node->mName = sym->mUniqueName;
         // Convert type name
         if (ConvertTypeName(node->mType, sym->mTypeName))
             node->mType = sym->mTypeName;
@@ -218,16 +225,17 @@ void Analyser::VisitVarDefStatement(VarDefStatement* node)
             OnError();
         }
     }
+    return sym;
 }
 
-void Analyser::VisitStatementNode(Statement* node)
+Symbol* Analyser::VisitStatementNode(Statement* node)
 {
     EStatementType statementType = node->GetStatementType();
     switch (statementType)
     {
     case EStatementType::VariableDefinition:
     {
-        VisitVarDefStatement((VarDefStatement*)node);
+        return VisitVarDefStatement((VarDefStatement*)node);
         break;
     }
     case EStatementType::ControlStatement:
@@ -236,18 +244,30 @@ void Analyser::VisitStatementNode(Statement* node)
     }
     case EStatementType::ReturnStatement:
     {
+        ReturnStatement* retStm = static_cast<ReturnStatement*>(node);
+        if (mCurrentScope->mOwningSymbol->mSymbolType != ESymbolType::Function)
+        {
+            LOG_ERROR() << "Return statement can only exist inside a function";
+            OnError();
+        }
+        else
+            retStm->mFunction = mCurrentScope->mOwningSymbol->mUniqueName;
+
+        if (retStm->mExpression != nullptr)
+            VisitExpression(retStm->mExpression);
+
         break;
     }
     case EStatementType::Expression:
     {
-        VisitExpressionStatement((ExpressionStatement*)node);
+        return VisitExpressionStatement((ExpressionStatement*)node);
         break;
     }
     default:
         LOG_ERROR() << "Unhandled statement type: " << (int)statementType;
         OnError();
-        return;
     }
+    return nullptr;
 }
 
 void Analyser::VisitExpression(Expression* node)
@@ -273,6 +293,7 @@ void Analyser::VisitExpression(Expression* node)
     {
         FunctionCallExpression* funcCallExpr = (FunctionCallExpression*)node;
         Symbol* funcSym = GetSymbol(funcCallExpr->mFunction, ESymbolType::Function);
+        funcCallExpr->mFunction = funcSym->mUniqueName;
 
         Expression* currParamExpr = funcCallExpr->mParameters;
         Symbol* currParamSym = funcSym->mChildren ? funcSym->mChildren->mTail : nullptr;
