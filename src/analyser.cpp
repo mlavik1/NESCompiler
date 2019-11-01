@@ -162,20 +162,26 @@ void Analyser::VisitFuncDefNode(FunctionDefinition* node)
         return;
     }
 
-    // Visit content nodes
-    if (node->mContent != nullptr)
+    PushSybolStack(sym);
+
+    // Visit param nodes
+    Node* currParam = node->mParams;
+    while (currParam != nullptr)
     {
-        PushSybolStack(sym);
-
-        Node* currContent = node->mContent;
-        while (currContent != nullptr)
-        {
-            VisitNode(currContent);
-            currContent = currContent->mNext;
-        }
-
-        PopSybolStack();
+        VisitNode(currParam);
+        Symbol* paramSym = GetSymbol(((VarDefStatement*)(currParam))->mName, ESymbolType::Variable); // TODO: Maybe VisitNode should return symbol?
+        paramSym->mSymbolType = ESymbolType::FuncParam;
+        currParam = currParam->mNext;
     }
+    // Visit content nodes
+    Node* currContent = node->mContent;
+    while (currContent != nullptr)
+    {
+        VisitNode(currContent);
+        currContent = currContent->mNext;
+    }
+
+    PopSybolStack();
 
     AddSymbol(sym);
 }
@@ -266,10 +272,33 @@ void Analyser::VisitExpression(Expression* node)
     case EExpressionType::FunctionCall:
     {
         FunctionCallExpression* funcCallExpr = (FunctionCallExpression*)node;
+        Symbol* funcSym = GetSymbol(funcCallExpr->mFunction, ESymbolType::Function);
+
+        Expression* currParamExpr = funcCallExpr->mParameters;
+        Symbol* currParamSym = funcSym->mChildren ? funcSym->mChildren->mTail : nullptr;
+        while(currParamExpr != nullptr)
+        {
+            if (currParamSym == nullptr || currParamSym->mSymbolType != ESymbolType::FuncParam)
+            {
+                LOG_ERROR() << "Invalid function call parameters to function: " << funcCallExpr->mFunction;
+                OnError();
+                break;
+            }
+            // Visit expression node
+            VisitExpression(static_cast<Expression*>(currParamExpr));
+            // Check param value type
+            if (currParamExpr->mValueType != currParamSym->mTypeName)
+            {
+                LOG_ERROR() << "Function call parameter type mismatch: " << currParamExpr->mValueType << " and " << currParamSym->mTypeName;
+                OnError();
+                break;
+            }
+
+            currParamExpr = (Expression*)currParamExpr->mNext;
+            currParamSym = currParamSym->mNext;
+        }
         
-        // *** TODO ***
-        //
-        //
+        node->mValueType = funcSym->mTypeName;
 
         break;
     }
@@ -277,7 +306,7 @@ void Analyser::VisitExpression(Expression* node)
     {
         IdentifierExpression* identExpr = (IdentifierExpression*)node;
         
-        Symbol* identSym = GetSymbol(identExpr->mIdentifier, ESymbolType::Variable);
+        Symbol* identSym = GetSymbol(identExpr->mIdentifier, ESymbolType::Variable | ESymbolType::FuncParam);
         if (identSym == nullptr)
         {
             LOG_ERROR() << "Undeclared identifier: " << identExpr->mIdentifier;

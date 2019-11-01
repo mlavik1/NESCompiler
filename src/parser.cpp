@@ -128,10 +128,30 @@ Parser::EParseResult Parser::ParseAtom(Expression** outExpression)
     }
     case ETokenType::Identifier:
     {
-        IdentifierExpression* identifierExpression = new IdentifierExpression();
-        identifierExpression->mIdentifier = currToken.mTokenString;
-        atomExpression = identifierExpression;
-        mTokenParser->Advance();
+        if (mTokenParser->GetTokenFromOffset(1).mTokenString == "(")
+        {
+            FunctionCallExpression* funcCallExpr = new FunctionCallExpression();
+            funcCallExpr->mFunction = currToken.mTokenString;
+            Expression** currParamExpr = &funcCallExpr->mParameters;
+            mTokenParser->Advance();
+            while (mTokenParser->GetCurrentToken().mTokenString != ")")
+            {
+                mTokenParser->Advance();
+                EParseResult exprParseRes = ParseExpression(mDefaultOuterOperatorInfo, currParamExpr);
+                if (exprParseRes == EParseResult::Error)
+                    return exprParseRes;
+                currParamExpr = (Expression**)&(*currParamExpr)->mNext;
+            }
+            atomExpression = funcCallExpr;
+            mTokenParser->Advance();
+        }
+        else
+        {
+            IdentifierExpression* identifierExpression = new IdentifierExpression();
+            identifierExpression->mIdentifier = currToken.mTokenString;
+            atomExpression = identifierExpression;
+            mTokenParser->Advance();
+        }
         break;
     }
     default:
@@ -170,18 +190,15 @@ Parser::EParseResult Parser::ParseAtom(Expression** outExpression)
 
 Parser::EParseResult Parser::ParseExpression(const OperatorInfo& inOperator, Expression** outExpression)
 {
-    while (mTokenParser->GetCurrentToken().mTokenString != ";")
+    // Parse atom
+    EParseResult atomParseResult = ParseAtom(outExpression);
+    if (atomParseResult != EParseResult::Parsed)
     {
-        // Parse atom
-        EParseResult atomParseResult = ParseAtom(outExpression);
-        if (atomParseResult != EParseResult::Parsed)
-        {
-            return atomParseResult;
-        }
+        return atomParseResult;
+    }
 
-        if (mTokenParser->GetCurrentToken().mTokenString == ";")
-            break;
-
+    while (true)
+    {
         // Parse operator
         Token operatorToken = mTokenParser->GetCurrentToken();
         OperatorInfo operatorInfo;
@@ -212,8 +229,7 @@ Parser::EParseResult Parser::ParseExpression(const OperatorInfo& inOperator, Exp
         }
         else
         {
-            OnError("Expected binary operator");
-            return EParseResult::Error;
+            return EParseResult::Parsed; // nothing more to parse
         }
     }
 
@@ -243,6 +259,33 @@ Parser::EParseResult Parser::ParseExpressionStatement(Node** outNode)
         OnError("Invalid variable assignment expression.");
         return EParseResult::Error;
     }
+
+    return EParseResult::Parsed;
+}
+
+Parser::EParseResult Parser::ParseReturnStatement(Node** outNode)
+{
+    const Token token = mTokenParser->GetCurrentToken();
+
+    if (token.mTokenString != "return")
+        return EParseResult::NotParsed;
+
+    mTokenParser->Advance();
+
+    ReturnStatement* retStatement = new ReturnStatement();
+    *outNode = retStatement;
+
+    // Parse return value expression
+    if (mTokenParser->GetCurrentToken().mTokenString != ";")
+    {
+        EParseResult exprResult = ParseExpression(mDefaultOuterOperatorInfo, &retStatement->mExpression);
+        if (exprResult != EParseResult::Parsed)
+        {
+            OnError("Invalid return value expression.");
+            return EParseResult::Error;
+        }
+    }
+    mTokenParser->Advance(); // skip over ;
 
     return EParseResult::Parsed;
 }
@@ -300,6 +343,13 @@ Parser::EParseResult Parser::ParseStatement(Node** outNode)
         return parseResult;
     }
 
+    // Return statement
+    parseResult = ParseReturnStatement(outNode);
+    if (parseResult != EParseResult::NotParsed)
+    {
+        return parseResult;
+    }
+
     return EParseResult::NotParsed;
 }
 
@@ -339,6 +389,11 @@ Parser::EParseResult Parser::ParseFunctionDefinition(Node** outNode)
             OnError("Invalid function parameter");
             return EParseResult::Error;
         }
+
+        mTokenParser->Advance();
+        mTokenParser->Advance();
+        if (paramDelimiter.mTokenString != ")")
+            mTokenParser->Advance();
 
         VarDefStatement* param = new VarDefStatement();
         param->mType = paramIdentifier.mTokenString;
@@ -513,6 +568,7 @@ void PrintNodes(Node* node, int indents)
         LiteralExpression* literalExpr = dynamic_cast<LiteralExpression*>(currNode);
         IdentifierExpression* varExpr = dynamic_cast<IdentifierExpression*>(currNode);
         BinaryOperationExpression* binExpr = dynamic_cast<BinaryOperationExpression*>(currNode);
+        ReturnStatement* retStatement = dynamic_cast<ReturnStatement*>(currNode);
 
         if (structNode != nullptr)
         {
@@ -546,6 +602,11 @@ void PrintNodes(Node* node, int indents)
             LOG_INFO() << indentString << binExpr->mOperator;
             PrintNodes(binExpr->mRightOperand, indents);
         }
+        else if (retStatement != nullptr)
+        {
+            LOG_INFO() << "return";
+            PrintNodes(retStatement->mExpression, indents + 1);
+        }
 
         currNode = currNode->mNext;
     }
@@ -563,7 +624,7 @@ void Parser::Parse()
             if (currNode == nullptr)
                 currNode = mCompilationUnit->mRootNode = node;
             else
-                currNode->mNext = node;
+                currNode = currNode->mNext = node;
         }
         else if (result == EParseResult::Error)
             return;

@@ -5,6 +5,7 @@
 #include "tokeniser.h"
 #include "parser.h"
 #include "analyser.h"
+#include "emitter.h"
 
 int main(int args, char** argv)
 {
@@ -23,6 +24,8 @@ int main(int args, char** argv)
 
     Analyser analyser(&compilationUnit);
     analyser.Analyse();
+
+    Emitter emitter;
 
     return 0;
 }

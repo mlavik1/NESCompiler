@@ -110,7 +110,7 @@ public:
 class FunctionCallExpression : public Expression
 {
 public:
-    std::string mIdentifier;
+    std::string mFunction;
     Expression* mParameters = nullptr;
     virtual EExpressionType GetExpressionType() const override { return EExpressionType::FunctionCall; }
 };
@@ -128,6 +128,8 @@ public:
 class ReturnStatement : public Statement
 {
 public:
+    Expression * mExpression = nullptr;
+
     virtual EStatementType GetStatementType() const override { return EStatementType::ReturnStatement; };
 };
 
