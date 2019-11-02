@@ -22,7 +22,7 @@ uint16_t Emitter::FlipEndianness(uint16_t val)
 {
     const uint16_t l = val << 8;
     const uint16_t r = val >> 8;
-    return l | (r << 8); // swap order of the two bytes
+    return l | r; // swap order of the two bytes
 }
 
 void Emitter::SkipBytes(size_t size)
@@ -54,7 +54,7 @@ uint16_t Emitter::Emit(const char* op, EAddressingMode addrMode, uint16_t val)
 
     // Flip endianness
     const uint8_t val8 = static_cast<uint8_t>(val);
-    const uint16_t val16 = FlipEndianness(val);
+    const uint16_t val16 = val;// FlipEndianness(val);
 
     const Opcode opcode = itOp->second;
 

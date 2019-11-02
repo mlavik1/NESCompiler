@@ -236,7 +236,7 @@ void CodeGenerator::EmitFunction(FunctionDefinition* node)
         currContent = currContent->mNext;
     }
 
-    funcSym->mAddress = mEmitter->GetCurrentLocation() - funcSym->mAddress;
+    funcSym->mSize = mEmitter->GetCurrentLocation() - funcSym->mAddress;
 }
 
 void CodeGenerator::EmitStruct(StructDefinition* node)
@@ -297,10 +297,26 @@ void CodeGenerator::Generate()
     data[0] = 'N';
     data[1] = 'E';
     data[2] = 'S';
-    data[3] = 1;
-    data[4] = 1;
-    data[5] = 0;
-    data[5] = 1;
+    data[3] = 0x1a;
+    data[4] = 0x01;
+    data[5] = 0x01;
+    data[6] = 0x01;
+    data[7] = 0x00;
+    data[8] = 0x00;
+    data[9] = 0x00;
+    data[10] = 0x00;
+    data[11] = 0x00;
+    data[12] = 0x00;
+    data[13] = 0x00;
+    data[14] = 0x00;
+    data[15] = 0x00;
+
+    Symbol* mainSym = mCompilationUnit->mSymbolTable["_main"];
+
+    *(int16_t*)&data[0xfffc] = mainSym->mAddress; // reset vector = main function
+
+    memcpy(&data[16], &data[0xc000], 0x4000); // TODO
+
     // Write program
     romStream.write(data, 0x10000);
     romStream.close();
