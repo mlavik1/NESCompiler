@@ -562,47 +562,39 @@ void PrintNodes(Node* node, int indents)
     Node* currNode = node;
     while (currNode != nullptr)
     {
-        StructDefinition* structNode = dynamic_cast<StructDefinition*>(currNode);
-        FunctionDefinition* funcNode = dynamic_cast<FunctionDefinition*>(currNode);
-        VarDefStatement* varDefNode = dynamic_cast<VarDefStatement*>(currNode);
-        LiteralExpression* literalExpr = dynamic_cast<LiteralExpression*>(currNode);
-        IdentifierExpression* varExpr = dynamic_cast<IdentifierExpression*>(currNode);
-        BinaryOperationExpression* binExpr = dynamic_cast<BinaryOperationExpression*>(currNode);
-        ReturnStatement* retStatement = dynamic_cast<ReturnStatement*>(currNode);
-
-        if (structNode != nullptr)
+        if (StructDefinition* structNode = dynamic_cast<StructDefinition*>(currNode))
         {
             LOG_INFO() << indentString << "Struct: " << structNode->mName;
             PrintNodes(structNode->mContent, indents+1);
         }
-        else if (funcNode != nullptr)
+        else if (FunctionDefinition* funcNode = dynamic_cast<FunctionDefinition*>(currNode))
         {
             LOG_INFO() << indentString << "Function: " << funcNode->mType << " " << funcNode->mName;
             PrintNodes(funcNode->mParams, indents + 1);
             PrintNodes(funcNode->mContent, indents + 1);
         }
-        else if (varDefNode != nullptr)
+        else if (VarDefStatement* varDefNode = dynamic_cast<VarDefStatement*>(currNode))
         {
             LOG_INFO() << indentString << "Variable: " << varDefNode->mType << " " << varDefNode->mName;
             if (varDefNode->mExpression != nullptr)
                 LOG_INFO() << indentString << " =";
             PrintNodes(varDefNode->mExpression, indents + 1);
         }
-        else if (literalExpr != nullptr)
+        else if (LiteralExpression* literalExpr = dynamic_cast<LiteralExpression*>(currNode))
         {
             LOG_INFO() << indentString << literalExpr->mToken.mTokenString;
         }
-        else if (varExpr != nullptr)
+        else if (IdentifierExpression* varExpr = dynamic_cast<IdentifierExpression*>(currNode))
         {
             LOG_INFO() << indentString << varExpr->mIdentifier;
         }
-        else if (binExpr != nullptr)
+        else if (BinaryOperationExpression* binExpr = dynamic_cast<BinaryOperationExpression*>(currNode))
         {
             PrintNodes(binExpr->mLeftOperand, indents);
             LOG_INFO() << indentString << binExpr->mOperator;
             PrintNodes(binExpr->mRightOperand, indents);
         }
-        else if (retStatement != nullptr)
+        else if (ReturnStatement* retStatement = dynamic_cast<ReturnStatement*>(currNode))
         {
             LOG_INFO() << "return";
             PrintNodes(retStatement->mExpression, indents + 1);
