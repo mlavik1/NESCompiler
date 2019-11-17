@@ -9,7 +9,8 @@ enum class ENodeType
     Statement,
     FunctionDefinition,
     StructDefinition,
-    Expression
+    Expression,
+    InlineAssembly
 };
 
 enum class EStatementType
@@ -141,7 +142,6 @@ public:
 class ExpressionStatement : public Statement
 {
 public:
-    std::string mVariableName;
     Expression * mExpression = nullptr;
     virtual EStatementType GetStatementType() const override { return EStatementType::Expression; };
 };
@@ -193,4 +193,14 @@ public:
     Node* mContent = nullptr;
 
     virtual ENodeType GetNodeType() override { return ENodeType::StructDefinition; };
+};
+
+class InlineAssemblyStatement : public Node
+{
+public:
+    std::string mOpcodeName;
+    std::string mOp1;
+    std::string mOp2;
+
+    virtual ENodeType GetNodeType() override { return ENodeType::InlineAssembly; };
 };

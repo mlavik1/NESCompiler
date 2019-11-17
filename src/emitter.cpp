@@ -80,7 +80,7 @@ uint16_t Emitter::Emit(const char* op, EAddressingMode addrMode, uint16_t val)
         break;
     case EAddressingMode::Immediate:
         operandLen = 1;
-        LOG_INFO() << opcode.mName << " #" << std::setfill('0') << std::setw(2) << std::hex << val;
+        LOG_INFO() << opcode.mName << " #$" << std::setfill('0') << std::setw(2) << std::hex << val;
         break;
     case EAddressingMode::Implied:
         operandLen = 0;

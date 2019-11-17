@@ -41,6 +41,7 @@ private:
     EParseResult ParseStatement(Node** outNode);
     EParseResult ParseFunctionDefinition(Node** outNode);
     EParseResult ParseStructDefinition(Node** outNode);
+    EParseResult ParseInlineAssembly(Node** outNode);
     EParseResult ParseNextNode(Node** outNode);
 
     void OnError(const std::string& errorString);

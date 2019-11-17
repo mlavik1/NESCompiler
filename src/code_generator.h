@@ -24,6 +24,7 @@ public:
     void EmitStatement(Statement* node);
     void EmitFunction(FunctionDefinition* node);
     void EmitStruct(StructDefinition* node);
+    void EmitInlineAssembly(InlineAssemblyStatement* node);
     void EmitNode(Node* node);
     void Generate();
 };

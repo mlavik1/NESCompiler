@@ -194,6 +194,7 @@ Symbol* Analyser::VisitFuncDefNode(FunctionDefinition* node)
 
 Symbol* Analyser::VisitExpressionStatement(ExpressionStatement* node)
 {
+    VisitExpression(node->mExpression);
     return nullptr; // ???
 }
 
@@ -387,6 +388,11 @@ void Analyser::VisitNode(Node* node)
     case ENodeType::Statement:
     {
         VisitStatementNode(reinterpret_cast<Statement*>(node));
+        break;
+    }
+    case ENodeType::InlineAssembly:
+    {
+        // TODO
         break;
     }
     default:

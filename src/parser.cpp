@@ -238,27 +238,25 @@ Parser::EParseResult Parser::ParseExpression(const OperatorInfo& inOperator, Exp
 
 Parser::EParseResult Parser::ParseExpressionStatement(Node** outNode)
 {
-    const Token nameToken = mTokenParser->GetTokenFromOffset(1);
-    const Token secondToken = mTokenParser->GetTokenFromOffset(2);
+    const Token nameToken = mTokenParser->GetCurrentToken();
+    const Token secondToken = mTokenParser->GetTokenFromOffset(1);
 
-    if (nameToken.mTokenType != ETokenType::Identifier || secondToken.mTokenString != "=")
+    if (nameToken.mTokenType != ETokenType::Identifier || (secondToken.mTokenString != "=" && secondToken.mTokenString != "("))
         return EParseResult::NotParsed;
 
-    mTokenParser->Advance();
-    mTokenParser->Advance();
-
     // Create node
-    ExpressionStatement* varDefNode = new ExpressionStatement();
-    varDefNode->mVariableName = nameToken.mTokenString;
-    *outNode = varDefNode;
+    ExpressionStatement* exprStmNode = new ExpressionStatement();
+    *outNode = exprStmNode;
 
     // Parse assignment expression
-    EParseResult exprResult = ParseExpression(mDefaultOuterOperatorInfo, &varDefNode->mExpression);
+    EParseResult exprResult = ParseExpression(mDefaultOuterOperatorInfo, &exprStmNode->mExpression);
     if (exprResult != EParseResult::Parsed)
     {
         OnError("Invalid variable assignment expression.");
         return EParseResult::Error;
     }
+
+    mTokenParser->Advance();
 
     return EParseResult::Parsed;
 }
@@ -507,6 +505,35 @@ Parser::EParseResult Parser::ParseStructDefinition(Node** outNode)
     }
 }
 
+Parser::EParseResult Parser::ParseInlineAssembly(Node** outNode)
+{
+    const Token token = mTokenParser->GetCurrentToken();
+
+    if (token.mTokenString != "__asm")
+        return EParseResult::NotParsed;
+
+    mTokenParser->Advance();
+
+    InlineAssemblyStatement* node = new InlineAssemblyStatement();
+    *outNode = node;
+    
+    // TODO: Indirect addressing mode
+    // see http://6502.org/tutorials/6502opcodes.html#ADC for examples
+
+    node->mOpcodeName = mTokenParser->GetCurrentToken().mTokenString;
+    mTokenParser->Advance();
+    node->mOp1 = mTokenParser->GetCurrentToken().mTokenString;
+
+    if (mTokenParser->GetCurrentToken().mTokenString == ",")
+    {
+        mTokenParser->Advance();
+        node->mOp2 = mTokenParser->GetCurrentToken().mTokenString;
+    }
+
+    mTokenParser->Advance();
+
+    return EParseResult::Parsed;
+}
 
 Parser::EParseResult Parser::ParseNextNode(Node** outNode)
 {
@@ -516,8 +543,15 @@ Parser::EParseResult Parser::ParseNextNode(Node** outNode)
     {
     case ETokenType::Identifier:
     {
+        // Inline assembly
+        EParseResult parseResult = ParseInlineAssembly(outNode);
+        if (parseResult != EParseResult::NotParsed)
+        {
+            return parseResult;
+        }
+
         // Struct  definition
-        EParseResult parseResult = ParseStructDefinition(outNode);
+        parseResult = ParseStructDefinition(outNode);
         if (parseResult != EParseResult::NotParsed)
         {
             return parseResult;

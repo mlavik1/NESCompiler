@@ -1,6 +1,8 @@
 #include "code_generator.h"
 #include <assert.h>
 #include <fstream>
+#include <sstream>
+#include <algorithm>
 
 void CodeGenerator::RegisterBuiltinSymbol(std::string name, uint16_t size)
 {
@@ -203,6 +205,12 @@ void CodeGenerator::EmitStatement(Statement* node)
 
         break;
     }
+    case EStatementType::Expression:
+    {
+        ExpressionStatement* exprStm = static_cast<ExpressionStatement*>(node);
+        uint16_t exprAddr = EmitExpression(exprStm->mExpression);
+        break;
+    }
     default:
         assert(0); // TODO
     }
@@ -236,6 +244,10 @@ void CodeGenerator::EmitFunction(FunctionDefinition* node)
         currContent = currContent->mNext;
     }
 
+    // void return
+    if (node->mType == "void")
+        mEmitter->Emit("RTS");
+
     funcSym->mSize = mEmitter->GetCurrentLocation() - funcSym->mAddress;
 }
 
@@ -255,6 +267,68 @@ void CodeGenerator::EmitStruct(StructDefinition* node)
     structSym->mAddress = mEmitter->GetCurrentLocation() - structSym->mAddress;
 }
 
+void CodeGenerator::EmitInlineAssembly(InlineAssemblyStatement* node)
+{
+    std::transform(node->mOpcodeName.begin(), node->mOpcodeName.end(), node->mOpcodeName.begin(), ::toupper);
+
+    if (node->mOpcodeName == "")
+        mEmitter->Emit(node->mOp1.c_str());
+    else
+    {
+        EAddressingMode addrMode = static_cast<EAddressingMode>(-1);
+        
+        const bool isVal = node->mOp1[0] == '#';
+        const bool isHex = node->mOp1[isVal ? 1 : 0] == '$';
+        const std::string opValStr = node->mOp1.substr((isVal ? 1 : 0) + (isHex ? 1 : 0));
+
+        unsigned int opVal;
+        if (isHex)
+        {
+            std::stringstream ss;
+            ss << std::hex << opValStr;
+            ss >> opVal;
+        }
+        else
+            opVal = std::stoi(opValStr);
+
+        if (isVal)
+        {
+            addrMode = EAddressingMode::Immediate;
+        }
+        else
+        {
+            assert(isHex);
+            const size_t opSize = opValStr.size() / 2;
+            assert(0 < opSize < 3);
+
+            const bool isAbsolute = opSize == 2;
+
+            if (node->mOp2 == "")
+            {
+                if (isAbsolute)
+                    addrMode = EAddressingMode::Absolute;
+                else
+                    addrMode = EAddressingMode::ZeroPage;
+            }
+            else
+            {
+                std::transform(node->mOp2.begin(), node->mOp2.end(), node->mOp2.begin(), ::tolower);
+
+                if (isAbsolute && node->mOp2 == "x")
+                    addrMode = EAddressingMode::AbsoluteX;
+                else if (isAbsolute && node->mOp2 == "y")
+                    addrMode = EAddressingMode::AbsoluteY;
+                else if (node->mOp2 == "x")
+                    addrMode = EAddressingMode::ZeroPageX;
+                else if (node->mOp2 == "y")
+                    addrMode = EAddressingMode::ZeroPageY;
+            }
+        }
+        assert(addrMode != -1);
+        mEmitter->Emit(node->mOpcodeName.c_str(), addrMode, static_cast<uint16_t>(opVal));
+    }
+}
+
 void CodeGenerator::EmitNode(Node* node)
 {
     ENodeType nodeType = node->GetNodeType();
@@ -269,6 +343,9 @@ void CodeGenerator::EmitNode(Node* node)
         break;
     case ENodeType::StructDefinition:
         EmitStruct(static_cast<StructDefinition*>(node));
+        break;
+    case ENodeType::InlineAssembly:
+        EmitInlineAssembly(static_cast<InlineAssemblyStatement*>(node));
         break;
     }
 }
