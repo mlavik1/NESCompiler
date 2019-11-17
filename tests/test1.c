@@ -10,9 +10,12 @@ uint8_t incrementNumber(uint8_t num)
 
 void playSound()
 {
-    __asm LDA #$FD
+    //__asm LDA #$FD
+    //__asm STA $4015
+    uint8_t lala = 253; // #$FD
+    __asm LDA lala
     __asm STA $4015
-
+    
     __asm lda #$3F
     __asm sta $4000
 

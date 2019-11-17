@@ -271,6 +271,18 @@ Symbol* Analyser::VisitStatementNode(Statement* node)
     return nullptr;
 }
 
+void Analyser::VisitInlineAssemblyNode(InlineAssemblyStatement* node)
+{
+    if (node->mOp1 != "")
+    {
+        Symbol* varSym = GetSymbol(node->mOp1, ESymbolType::Variable);
+        if (varSym != nullptr)
+        {
+            node->mOp1 = varSym->mUniqueName;
+        }
+    }
+}
+
 void Analyser::VisitExpression(Expression* node)
 {
     EExpressionType exprType = node->GetExpressionType();
@@ -392,7 +404,7 @@ void Analyser::VisitNode(Node* node)
     }
     case ENodeType::InlineAssembly:
     {
-        // TODO
+        VisitInlineAssemblyNode(reinterpret_cast<InlineAssemblyStatement*>(node));
         break;
     }
     default:

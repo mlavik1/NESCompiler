@@ -276,13 +276,23 @@ void CodeGenerator::EmitInlineAssembly(InlineAssemblyStatement* node)
     else
     {
         EAddressingMode addrMode = static_cast<EAddressingMode>(-1);
-        
+
+        auto opSymIter = mCompilationUnit->mSymbolTable.find(node->mOp1);
+
+        const bool isSym = opSymIter != mCompilationUnit->mSymbolTable.end();
         const bool isVal = node->mOp1[0] == '#';
         const bool isHex = node->mOp1[isVal ? 1 : 0] == '$';
         const std::string opValStr = node->mOp1.substr((isVal ? 1 : 0) + (isHex ? 1 : 0));
 
+        assert(isSym || isVal || isHex);
+
+        // Get operand value
         unsigned int opVal;
-        if (isHex)
+        if (isSym)
+        {
+            opVal = static_cast<unsigned int>(opSymIter->second->mAddress);
+        }
+        else if (isHex)
         {
             std::stringstream ss;
             ss << std::hex << opValStr;
@@ -291,9 +301,14 @@ void CodeGenerator::EmitInlineAssembly(InlineAssemblyStatement* node)
         else
             opVal = std::stoi(opValStr);
 
+        // Get addressing mode
         if (isVal)
         {
             addrMode = EAddressingMode::Immediate;
+        }
+        else if (isSym)
+        {
+            addrMode = EAddressingMode::Absolute;
         }
         else
         {
