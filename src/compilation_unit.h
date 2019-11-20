@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include "node.h"
+#include "relocation.h"
 
 enum class ESymbolType
 {
@@ -69,4 +70,7 @@ struct CompilationUnit
 public:
     std::unordered_map<std::string, Symbol*> mSymbolTable;
     Node* mRootNode;
+
+    std::vector<char> mObjectCode;
+    RelocationText mRelocationText;
 };

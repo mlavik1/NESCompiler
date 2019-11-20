@@ -106,8 +106,11 @@ Symbol* Analyser::VisitStructDefNode(StructDefinition* node)
         sym->mSymbolType = ESymbolType::Struct;
         // Generate unique name
         GenerateUniqueName(sym);
-        node->mName = sym->mUniqueName;
+
+        AddSymbol(sym);
     }
+    // Update node name
+    node->mName = sym->mUniqueName;
 
     if (sym->mChildren != nullptr && node->mContent != nullptr)
     {
@@ -130,7 +133,6 @@ Symbol* Analyser::VisitStructDefNode(StructDefinition* node)
         PopSybolStack();
     }
 
-    AddSymbol(sym);
     return sym;
 }
 
@@ -146,11 +148,14 @@ Symbol* Analyser::VisitFuncDefNode(FunctionDefinition* node)
         sym->mSymbolType = ESymbolType::Function;
         // Generate unique name
         GenerateUniqueName(sym);
-        node->mName = sym->mUniqueName;
         // Convert type name
-        if (ConvertTypeName(node->mType, sym->mTypeName))
-            node->mType = sym->mTypeName;
+        if (!ConvertTypeName(node->mType, sym->mTypeName))
+            return nullptr;
+        AddSymbol(sym);
     }
+    // Update name
+    node->mName = sym->mUniqueName;
+    node->mType = sym->mTypeName;
 
     if (sym->mChildren != nullptr && node->mContent != nullptr)
     {
@@ -166,29 +171,31 @@ Symbol* Analyser::VisitFuncDefNode(FunctionDefinition* node)
         return nullptr;
     }
 
-    PushSybolStack(sym);
+    if (node->mContent != nullptr)
+    {
+        PushSybolStack(sym);
 
-    // Visit param nodes
-    VarDefStatement* currParam = node->mParams;
-    while (currParam != nullptr)
-    {
-        Symbol* paramSym = VisitStatementNode(currParam);
-        paramSym->mSymbolType = ESymbolType::FuncParam;
-        currParam = static_cast<VarDefStatement*>(currParam->mNext);
-    }
-    // Visit content nodes
-    Node* currContent = node->mContent;
-    while (currContent != nullptr)
-    {
-        VisitNode(currContent);
-        currContent = currContent->mNext;
+        // Visit param nodes
+        VarDefStatement* currParam = node->mParams;
+        while (currParam != nullptr)
+        {
+            Symbol* paramSym = VisitStatementNode(currParam);
+            paramSym->mSymbolType = ESymbolType::FuncParam;
+            currParam = static_cast<VarDefStatement*>(currParam->mNext);
+        }
+        // Visit content nodes
+        Node* currContent = node->mContent;
+        while (currContent != nullptr)
+        {
+            VisitNode(currContent);
+            currContent = currContent->mNext;
+        }
+
+        PopSybolStack();
     }
 
     // TODO: Check that (non-void) function returns something
 
-    PopSybolStack();
-
-    AddSymbol(sym);
     return sym;
 }
 
@@ -211,11 +218,13 @@ Symbol* Analyser::VisitVarDefStatement(VarDefStatement* node)
         AddSymbol(sym);
         // Generate unique name
         GenerateUniqueName(sym);
-        node->mName = sym->mUniqueName;
         // Convert type name
-        if (ConvertTypeName(node->mType, sym->mTypeName))
-            node->mType = sym->mTypeName;
+        if (!ConvertTypeName(node->mType, sym->mTypeName))
+            return nullptr;
     }
+    // Update node name and type
+    node->mName = sym->mUniqueName;
+    node->mType = sym->mTypeName;
 
     if (node->mExpression != nullptr)
     {

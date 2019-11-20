@@ -1,28 +1,9 @@
 #include "code_generator.h"
 #include <assert.h>
-#include <fstream>
 #include <sstream>
 #include <algorithm>
 
-void CodeGenerator::RegisterBuiltinSymbol(std::string name, uint16_t size)
-{
-    Symbol* sym = new Symbol();
-    sym->mName = sym->mUniqueName = name;
-    sym->mSize = size;
-    sym->mSymbolType = ESymbolType::BuiltInType;
-    mCompilationUnit->mSymbolTable[name] = sym;
-}
-
-CodeGenerator::CodeGenerator(CompilationUnit* compilationUnit)
-{
-    mCompilationUnit = compilationUnit;
-    mEmitter = new Emitter();
-    
-    // Register built-in types
-    RegisterBuiltinSymbol("uint8_t", 1);
-}
-
-uint16_t CodeGenerator::RequestVarAddr(uint16_t bytes)
+uint16_t DataAllocator::RequestVarAddr(uint16_t bytes)
 {
     // Avoid collision with the stack
     if (mNextVarAddr + bytes >= 0x0100)
@@ -34,6 +15,62 @@ uint16_t CodeGenerator::RequestVarAddr(uint16_t bytes)
     assert(mNextVarAddr <= 0x0800); // End of 2KB internal RAM
 
     return addr;
+}
+
+CodeGenerator::CodeGenerator(CompilationUnit* compilationUnit, Emitter* emitter, DataAllocator* dataAllocator)
+{
+    mCompilationUnit = compilationUnit;
+    mEmitter = emitter;
+    mDataAllocator = dataAllocator;
+
+    // Register built-in types
+    RegisterBuiltinSymbol("uint8_t", 1);
+}
+
+void CodeGenerator::RegisterBuiltinSymbol(std::string name, uint16_t size)
+{
+    Symbol* sym = new Symbol();
+    sym->mName = sym->mUniqueName = name;
+    sym->mSize = size;
+    sym->mSymbolType = ESymbolType::BuiltInType;
+    mCompilationUnit->mSymbolTable[name] = sym;
+}
+
+uint16_t CodeGenerator::Emit(const std::string& op, const EAddressingMode addrMode, const EmitAddr addr)
+{
+    switch (addr.mType)
+    {
+    /*case EmitAddr::EAddrType::Value:
+        return mEmitter->Emit(op.c_str(), addrMode, addr.mValue);
+        break;*/
+    case EmitAddr::EAddrType::CodeAddress:
+    case EmitAddr::EAddrType::DataAddress:
+    {
+        uint16_t bytesWritten = mEmitter->Emit(op.c_str(), addrMode, addr.mAddress);
+        if (addr.mType == EmitAddr::EAddrType::CodeAddress)
+            mCompilationUnit->mRelocationText.mRelativeAddresses.push_back(mEmitter->GetCurrentLocation() - 2);
+        return bytesWritten;
+        break;
+    }
+    case EmitAddr::EAddrType::CodeSymbol:
+    case EmitAddr::EAddrType::DataSymbol:
+    {
+        if (addr.mRelativeSymbol->mAddrType == ESymAddrType::None)
+        {
+            uint16_t bytesWritten = mEmitter->Emit(op.c_str(), addrMode, addr.mAddress); // write relative address (offset from symbol addr)
+            mCompilationUnit->mRelocationText.mSymAddrRefs.push_back({ mEmitter->GetCurrentLocation() - 2, addr.mRelativeSymbol->mUniqueName });
+            return bytesWritten;
+        }
+        else
+        {
+            uint16_t bytesWritten = mEmitter->Emit(op.c_str(), addrMode, addr.mRelativeSymbol->mAddress);
+            if(addr.mType == EmitAddr::EAddrType::CodeSymbol)
+                mCompilationUnit->mRelocationText.mRelativeAddresses.push_back(mEmitter->GetCurrentLocation() - 2);
+            return bytesWritten;
+        }
+        break;
+    }
+    }
 }
 
 void CodeGenerator::SetIdentifierSymSize(Symbol* sym)
@@ -53,7 +90,7 @@ void CodeGenerator::SetIdentifierSymSize(Symbol* sym)
     }
 }
 
-uint16_t CodeGenerator::EmitExpression(Expression* node)
+EmitAddr CodeGenerator::EmitExpression(Expression* node)
 {
     EExpressionType type = node->GetExpressionType();
     switch (type)
@@ -64,11 +101,16 @@ uint16_t CodeGenerator::EmitExpression(Expression* node)
         if (litExpr->mToken.mTokenType == ETokenType::IntegerLiteral)
         {
             assert(node->mValueType == "uint8_t");
-            uint16_t addr = RequestVarAddr(1);
             uint8_t val = static_cast<uint8_t>(litExpr->mToken.mIntValue);
-            mEmitter->Emit("LDA", EAddressingMode::Immediate, val);
-            mEmitter->Emit("STA", EAddressingMode::Absolute, addr);
-            return addr;
+            EmitAddr emitRes;
+            // TODO: Simply return value
+            //emitRes.mType = EmitAddr::EAddrType::Value;
+            //emitRes.mValue = val;
+            emitRes.mType = EmitAddr::EAddrType::DataAddress;
+            emitRes.mAddress = mDataAllocator->RequestVarAddr(1);
+            mEmitter->Emit("LDA", EAddressingMode::Immediate, val); // TODO
+            mEmitter->Emit("STA", EAddressingMode::Absolute, emitRes.mAddress); // TODO
+            return emitRes;
         }
         else
             assert(0); // TODO: implement other types
@@ -78,27 +120,40 @@ uint16_t CodeGenerator::EmitExpression(Expression* node)
     {
         IdentifierExpression* identExpr = static_cast<IdentifierExpression*>(node);
         Symbol* identSym = mCompilationUnit->mSymbolTable[identExpr->mIdentifier];
-        return identSym->mAddress;
-
+        EmitAddr emitRes;
+        emitRes.mType = EmitAddr::EAddrType::DataSymbol;
+        emitRes.mRelativeSymbol = identSym;
+        emitRes.mAddress = 0;
+        return emitRes;
         break;
     }
     case EExpressionType::FunctionCall:
     {
         FunctionCallExpression* callExrp = static_cast<FunctionCallExpression*>(node);
         Symbol* funcSym = mCompilationUnit->mSymbolTable[callExrp->mFunction];
-        
+
         // Set parameters
         Symbol* paramSym = funcSym->mChildren ? funcSym->mChildren->mTail : nullptr;
         Expression* paramExpr = callExrp->mParameters;
         while (paramExpr != nullptr)
         {
-            uint16_t paramExprAddr = EmitExpression(paramExpr);
+            // Parameter value expression
+            EmitAddr paramExprAddr = EmitExpression(paramExpr);
 
+            // Copy byte by byte
             uint16_t currOffset = 0;
             while (currOffset < paramSym->mSize)
             {
-                mEmitter->Emit("LDA", EAddressingMode::Absolute, paramExprAddr + currOffset);
-                mEmitter->Emit("STA", EAddressingMode::Absolute, paramSym->mAddress + currOffset);
+                // Load value from expression into A register
+                EmitAddr exprChunkAddr = paramExprAddr;
+                exprChunkAddr.mAddress += currOffset;
+                Emit("LDA", EAddressingMode::Absolute, exprChunkAddr);
+                // Store value of A in parameter symbol address
+                EmitAddr currParamAddr;
+                currParamAddr.mType = EmitAddr::EAddrType::DataSymbol;
+                currParamAddr.mRelativeSymbol = paramSym;
+                currParamAddr.mAddress = currOffset; // relative to sym addr (relocated later)
+                Emit("STA", EAddressingMode::Absolute, currParamAddr);
                 currOffset++;
             }
 
@@ -107,17 +162,25 @@ uint16_t CodeGenerator::EmitExpression(Expression* node)
         }
 
         // Jump
-        mEmitter->Emit("JSR", EAddressingMode::Absolute, funcSym->mAddress);
+        EmitAddr jmpAddr;
+        jmpAddr.mType = EmitAddr::EAddrType::CodeSymbol;
+        jmpAddr.mRelativeSymbol = funcSym;
+        jmpAddr.mAddress = 0;
+        Emit("JSR", EAddressingMode::Absolute, jmpAddr);
 
         // Return value
         if (funcSym->mTypeName != "void")
         {
-            uint16_t funcRetAddr = mFuncRetAddrs[funcSym->mUniqueName];
+            EmitAddr funcRetAddr = mFuncRetAddrs[funcSym->mUniqueName];
 
             return funcRetAddr;
         }
         else
-            return 0;
+        {
+            EmitAddr voidAddr;
+            voidAddr.mType = EmitAddr::EAddrType::None;
+            return voidAddr;
+        }
 
         break;
     }
@@ -131,16 +194,18 @@ uint16_t CodeGenerator::EmitExpression(Expression* node)
         BinaryOperationExpression* binOpExpr = static_cast<BinaryOperationExpression*>(node);
         Symbol* valSym = mCompilationUnit->mSymbolTable[binOpExpr->mValueType];
 
-        uint16_t retAddr = RequestVarAddr(valSym->mSize);
+        EmitAddr retAddr;
+        retAddr.mType = EmitAddr::EAddrType::DataAddress;
+        retAddr.mAddress = mDataAllocator->RequestVarAddr(valSym->mSize);
 
-        uint16_t leftExprAddr = EmitExpression(binOpExpr->mLeftOperand);
-        uint16_t rightExprAddr = EmitExpression(binOpExpr->mRightOperand);
+        EmitAddr leftExprAddr = EmitExpression(binOpExpr->mLeftOperand);
+        EmitAddr rightExprAddr = EmitExpression(binOpExpr->mRightOperand);
 
         if (binOpExpr->mValueType == "uint8_t")
         {
-            mEmitter->Emit("LDA", EAddressingMode::Absolute, leftExprAddr);
-            mEmitter->Emit("ADC", EAddressingMode::Absolute, rightExprAddr);
-            mEmitter->Emit("STA", EAddressingMode::Absolute, retAddr);
+            Emit("LDA", EAddressingMode::Absolute, leftExprAddr);
+            Emit("ADC", EAddressingMode::Absolute, rightExprAddr);
+            Emit("STA", EAddressingMode::Absolute, retAddr);
         }
         else
             assert(0); // TODO: Implement other types
@@ -168,7 +233,7 @@ void CodeGenerator::EmitStatement(Statement* node)
         if (stmsym->mAddrType == ESymAddrType::None) // not yet defined
         {
             stmsym->mAddrType = ESymAddrType::Absolute;
-            stmsym->mAddress = RequestVarAddr(typesym->mSize);
+            stmsym->mAddress = mDataAllocator->RequestVarAddr(typesym->mSize);
             stmsym->mSize = typesym->mSize; // ??
         }
 
@@ -176,13 +241,23 @@ void CodeGenerator::EmitStatement(Statement* node)
         {
             assert(varDefStm->mExpression->mValueType == varDefStm->mType);
 
-            uint16_t exprAddr = EmitExpression(varDefStm->mExpression);
+            EmitAddr exprAddr = EmitExpression(varDefStm->mExpression);
 
+            // Copy byte by byte
             uint16_t currOffset = 0;
             while (currOffset < typesym->mSize)
             {
-                mEmitter->Emit("LDA", EAddressingMode::Absolute, exprAddr + currOffset);
-                mEmitter->Emit("STA", EAddressingMode::Absolute, stmsym->mAddress + currOffset);
+                // Load value from expression into A register
+                EmitAddr exprChunkAddr = exprAddr;
+                exprChunkAddr.mAddress += currOffset;
+                Emit("LDA", EAddressingMode::Absolute, exprChunkAddr);
+
+                // Store value of A in parameter symbol address
+                EmitAddr varChunkAddr;
+                varChunkAddr.mType = EmitAddr::EAddrType::DataSymbol;
+                varChunkAddr.mRelativeSymbol = stmsym;
+                varChunkAddr.mAddress = currOffset; // Relative to symbol address
+                Emit("STA", EAddressingMode::Absolute, varChunkAddr);
                 currOffset++;
             }
         }
@@ -195,7 +270,7 @@ void CodeGenerator::EmitStatement(Statement* node)
 
         if (retStm->mExpression != nullptr)
         {
-            uint16_t retExprAddr = EmitExpression(retStm->mExpression);
+            EmitAddr retExprAddr = EmitExpression(retStm->mExpression);
 
             Symbol* funcSym = mCompilationUnit->mSymbolTable[retStm->mFunction];
             mFuncRetAddrs[funcSym->mUniqueName] = retExprAddr;
@@ -208,7 +283,7 @@ void CodeGenerator::EmitStatement(Statement* node)
     case EStatementType::Expression:
     {
         ExpressionStatement* exprStm = static_cast<ExpressionStatement*>(node);
-        uint16_t exprAddr = EmitExpression(exprStm->mExpression);
+        EmitExpression(exprStm->mExpression);
         break;
     }
     default:
@@ -218,6 +293,10 @@ void CodeGenerator::EmitStatement(Statement* node)
 
 void CodeGenerator::EmitFunction(FunctionDefinition* node)
 {
+    // Declaration only?
+    if (node->mContent == nullptr)
+        return;
+
     Symbol* funcSym = mCompilationUnit->mSymbolTable[node->mName];
     funcSym->mAddrType = ESymAddrType::Absolute;
     funcSym->mAddress = mEmitter->GetCurrentLocation();
@@ -231,7 +310,7 @@ void CodeGenerator::EmitFunction(FunctionDefinition* node)
         SetIdentifierSymSize(paramSym);
         // Set address
         paramSym->mAddrType = ESymAddrType::Relative;
-        paramSym->mAddress = RequestVarAddr(paramSym->mSize);
+        paramSym->mAddress = mDataAllocator->RequestVarAddr(paramSym->mSize);
 
         currParam = static_cast<VarDefStatement*>(currParam->mNext);
     }
@@ -253,6 +332,10 @@ void CodeGenerator::EmitFunction(FunctionDefinition* node)
 
 void CodeGenerator::EmitStruct(StructDefinition* node)
 {
+    // Declaration only?
+    if (node->mContent == nullptr)
+        return;
+
     Symbol* structSym = mCompilationUnit->mSymbolTable[node->mName];
     structSym->mAddrType = ESymAddrType::Absolute;
     structSym->mAddress = mEmitter->GetCurrentLocation();
@@ -367,49 +450,10 @@ void CodeGenerator::EmitNode(Node* node)
 
 void CodeGenerator::Generate()
 {
-    mEmitter->Emit("SEI");
-    mEmitter->Emit("CLD");
-    // Set stack pointer
-    mEmitter->Emit("LDX", EAddressingMode::Immediate, 0xff);
-    mEmitter->Emit("TXS");
-
     Node* currNode = mCompilationUnit->mRootNode;
     while (currNode != nullptr)
     {
         EmitNode(currNode);
         currNode = currNode->mNext;
     }
-
-    // TODO: linking (multiple source files)
-
-    std::ofstream romStream("testrom.nes", std::ios::out | std::ios::binary);
-
-    char* data = mEmitter->GetData();
-    // Write header
-    data[0] = 'N';
-    data[1] = 'E';
-    data[2] = 'S';
-    data[3] = 0x1a;
-    data[4] = 0x01;
-    data[5] = 0x01;
-    data[6] = 0x01;
-    data[7] = 0x00;
-    data[8] = 0x00;
-    data[9] = 0x00;
-    data[10] = 0x00;
-    data[11] = 0x00;
-    data[12] = 0x00;
-    data[13] = 0x00;
-    data[14] = 0x00;
-    data[15] = 0x00;
-
-    Symbol* mainSym = mCompilationUnit->mSymbolTable["_main"];
-
-    *(int16_t*)&data[0xfffc] = mainSym->mAddress; // reset vector = main function
-
-    memcpy(&data[16], &data[0xc000], 0x4000); // TODO
-
-    // Write program
-    romStream.write(data, 0x10000);
-    romStream.close();
 }

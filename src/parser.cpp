@@ -405,6 +405,7 @@ Parser::EParseResult Parser::ParseFunctionDefinition(Node** outNode)
     // Function declaration only?
     if (mTokenParser->GetCurrentToken().mTokenString == ";")
     {
+        mTokenParser->Advance();
         return EParseResult::Parsed;
     }
 

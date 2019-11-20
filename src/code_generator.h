@@ -4,23 +4,45 @@
 #include <stdint.h>
 #include <unordered_map>
 
+struct EmitAddr
+{
+    enum class EAddrType
+    {
+        None, DataAddress, CodeAddress, DataSymbol, CodeSymbol
+    } mType;
+    union
+    {
+        uint16_t mAddress;
+        //uint8_t mValue; // TODO: Allow returning values directly (what about memcpy??? - function params)
+    };
+    Symbol* mRelativeSymbol; // address is relative to this
+};
+
+class DataAllocator
+{
+private:
+    uint16_t mNextVarAddr = 0x0000;
+public:
+    uint16_t RequestVarAddr(uint16_t bytes);
+};
+
 class CodeGenerator
 {
 private:
     CompilationUnit * mCompilationUnit;
     Emitter* mEmitter;
-    uint16_t mNextVarAddr = 0x0000;
-    std::unordered_map<std::string, uint16_t> mFuncRetAddrs; // TODO: remove this hack
+    std::unordered_map<std::string, EmitAddr> mFuncRetAddrs; // TODO: remove this hack
+    DataAllocator* mDataAllocator;
 
     void RegisterBuiltinSymbol(std::string name, uint16_t size);
     void SetIdentifierSymSize(Symbol* sym);
 
-    uint16_t RequestVarAddr(uint16_t bytes);
+    uint16_t Emit(const std::string& op, const EAddressingMode addrMode, const EmitAddr addr);
 
 public:
-    CodeGenerator(CompilationUnit* compilationUnit);
+    CodeGenerator(CompilationUnit* compilationUnit, Emitter* emitter, DataAllocator* dataAllocator);
 
-    uint16_t EmitExpression(Expression* node);
+    EmitAddr EmitExpression(Expression* node);
     void EmitStatement(Statement* node);
     void EmitFunction(FunctionDefinition* node);
     void EmitStruct(StructDefinition* node);
