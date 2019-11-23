@@ -91,6 +91,12 @@ bool Analyser::ConvertTypeName(const std::string& typeName, std::string& outUniq
 
 Symbol* Analyser::VisitBlockNode(Block* node)
 {
+    Node* currentNode = node->mNode;
+    while (currentNode != nullptr)
+    {
+        VisitNode(currentNode);
+        currentNode = currentNode->mNext;
+    }
     return nullptr;
 }
 
@@ -238,6 +244,20 @@ Symbol* Analyser::VisitVarDefStatement(VarDefStatement* node)
     return sym;
 }
 
+Symbol* Analyser::VisitControlStatement(ControlStatement* node)
+{
+    VisitExpression(node->mExpression);
+    
+    Node* currNode = node->mBody;
+    while (currNode != nullptr)
+    {
+        VisitNode(node->mBody);
+        currNode = currNode->mNext;
+    }
+
+    return nullptr;
+}
+
 Symbol* Analyser::VisitStatementNode(Statement* node)
 {
     EStatementType statementType = node->GetStatementType();
@@ -250,6 +270,7 @@ Symbol* Analyser::VisitStatementNode(Statement* node)
     }
     case EStatementType::ControlStatement:
     {
+        return VisitControlStatement((ControlStatement*)node);
         break;
     }
     case EStatementType::ReturnStatement:

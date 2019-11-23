@@ -23,6 +23,7 @@ public:
     void SkipBytes(size_t size);
     void SetWritePos(size_t pos);
     void EmitData(const char* data, size_t size);
+    void EmitDataAtPos(size_t pos, const char* data, size_t size);
     uint16_t Emit(const char* op);
     uint16_t Emit(const char* op, EAddressingMode addrMode, uint16_t val);
 

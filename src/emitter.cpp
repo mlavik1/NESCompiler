@@ -18,7 +18,6 @@ uint16_t Emitter::FlipEndianness(uint16_t val)
 
 void Emitter::SkipBytes(size_t size)
 {
-    LOG_INFO() << "(uninitialised) x" << size << " bytes";
     mCurrentLocation += size;
 }
 
@@ -29,9 +28,13 @@ void Emitter::SetWritePos(size_t pos)
 
 void Emitter::EmitData(const char* data, size_t size)
 {
-    LOG_INFO() << "(data) x" << size << " bytes";
-    memcpy(mOutput.data() + size, data, size);
+    memcpy(mOutput.data() + static_cast<size_t>(mCurrentLocation), data, size);
     mCurrentLocation += size;
+}
+
+void Emitter::EmitDataAtPos(size_t pos, const char* data, size_t size)
+{
+    memcpy(mOutput.data() + pos, data, size);
 }
 
 uint16_t Emitter::Emit(const char* op)
