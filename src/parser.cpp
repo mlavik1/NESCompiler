@@ -280,6 +280,8 @@ Parser::EParseResult Parser::ParseBlock(Node** outNode)
             }
             currNodePtr = &(*currNodePtr)->mNext;
         }
+        mTokenParser->Advance();
+
         return EParseResult::Parsed;
     }
     else
@@ -416,8 +418,6 @@ Parser::EParseResult Parser::ParseControlStatement(Node** outNode)
         return EParseResult::Error;
     }
 
-    mTokenParser->Advance();
-
     // Parse else statement (for if conditions)
     if (identifierToken.mTokenString == "if")
     {
@@ -429,7 +429,6 @@ Parser::EParseResult Parser::ParseControlStatement(Node** outNode)
                 printf("ERROR: Failed to parse else statement.");
                 return EParseResult::Error;
             }
-            mTokenParser->Advance();
         }
     }
 

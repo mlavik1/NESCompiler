@@ -248,10 +248,19 @@ Symbol* Analyser::VisitControlStatement(ControlStatement* node)
 {
     VisitExpression(node->mExpression);
     
+    // Visit body
     Node* currNode = node->mBody;
     while (currNode != nullptr)
     {
-        VisitNode(node->mBody);
+        VisitNode(currNode);
+        currNode = currNode->mNext;
+    }
+
+    // Visit connected statement
+    currNode = node->mConnectedStatement;
+    while (currNode != nullptr)
+    {
+        VisitNode(currNode);
         currNode = currNode->mNext;
     }
 

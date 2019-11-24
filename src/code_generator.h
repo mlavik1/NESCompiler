@@ -4,26 +4,47 @@
 #include <stdint.h>
 #include <unordered_map>
 
-enum class EEmitAddrType
+enum class EProcReg
 {
-    None, DataAddress, CodeAddress
+    A, X, Y
 };
 
-class EmitAddr
+enum class EAccumulatorArithmeticOp
+{
+    ADC, SBC, AND
+};
+
+enum class EJumpType
+{
+    JMP, JSR
+};
+
+enum class EBranchType
+{
+    BEQ, BNE, BPL, BMI, BCS
+};
+
+enum class EOperandType
+{
+    None, Value, DataAddress, CodeAddress
+};
+
+class EmitOperand
 {
 public:
 
-    EEmitAddrType mType;
+    EOperandType mType;
     union
     {
         uint16_t mAddress;
-        //uint8_t mValue; // TODO: Allow returning values directly (what about memcpy??? - function params)
+        uint8_t mValue;
+        EProcReg mRegister;
     };
     Symbol* mRelativeSymbol = nullptr; // address is relative to this
 
-    EmitAddr() {}
+    EmitOperand() {}
 
-    EmitAddr(EEmitAddrType type, uint16_t addr, Symbol* sym)
+    EmitOperand(EOperandType type, uint16_t addr, Symbol* sym)
     {
         mType = type;
         mAddress = addr;
@@ -44,22 +65,42 @@ class CodeGenerator
 private:
     CompilationUnit * mCompilationUnit;
     Emitter* mEmitter;
-    std::unordered_map<std::string, EmitAddr> mFuncRetAddrs; // TODO: remove this hack
+    std::unordered_map<std::string, EmitOperand> mFuncRetAddrs; // TODO: remove this hack
     DataAllocator* mDataAllocator;
+
+    std::unordered_map<EProcReg, EmitOperand> mRegisterContent;
+
+    const char* GetLoadOpcode(const EProcReg reg);
+    const char* GetStoreOpcode(const EProcReg reg);
+    const char* GetCmpOpcode(const EProcReg reg);
+    const char* GetAccArithOp(const EAccumulatorArithmeticOp op);
+    const char* GetBranchOp(const EBranchType type);
 
     void RegisterBuiltinSymbol(std::string name, uint16_t size);
     void SetIdentifierSymSize(Symbol* sym);
 
-    uint16_t Emit(const std::string& op, const EAddressingMode addrMode, const EmitAddr addr);
+    void ConvertToAddress(EmitOperand& operand);
+    void Emit(const char* op);
+    void EmitRelocatedAddress(const std::string& op, const EAddressingMode addrMode, const uint16_t addr);
+    void EmitRelocatedSymbol(const std::string& op, const EAddressingMode addrMode, const Symbol* sym, const uint16_t offset = 0);
+    void EmitLoad(const EProcReg reg, const EmitOperand operand);
+    void EmitStore(const EProcReg reg, const EmitOperand operand);
+    void EmitStore(const EmitOperand src, const EmitOperand dst);
+    void EmitBranch(EBranchType type, int8_t offset);
+    void EmitBranchAt(EBranchType type, uint8_t offset, uint16_t branchCodeAddr);
+    void EmitCompare(EProcReg reg, EmitOperand operand1, EmitOperand operand2);
+    void EmitCompare(EProcReg reg, EmitOperand operand);
+    void EmitAcumulatorArithmetic(EAccumulatorArithmeticOp op, EmitOperand operand);
+    void EmitJump(EJumpType type, EmitOperand operand);
 
 public:
     CodeGenerator(CompilationUnit* compilationUnit, Emitter* emitter, DataAllocator* dataAllocator);
 
-    EmitAddr EmitLiteralExpression(LiteralExpression* litExpr);
-    EmitAddr EmitIdentifierExpression(IdentifierExpression* identExpr);
-    EmitAddr EmitFuncCallExpression(FunctionCallExpression* callExrp);
-    EmitAddr EmitBinOpExpression(BinaryOperationExpression* binOpExpr);
-    EmitAddr EmitExpression(Expression* node);
+    EmitOperand EmitLiteralExpression(LiteralExpression* litExpr);
+    EmitOperand EmitIdentifierExpression(IdentifierExpression* identExpr);
+    EmitOperand EmitFuncCallExpression(FunctionCallExpression* callExrp);
+    EmitOperand EmitBinOpExpression(BinaryOperationExpression* binOpExpr);
+    EmitOperand EmitExpression(Expression* node);
     void EmitControlStatement(ControlStatement* node);
     void EmitStatement(Statement* node);
     void EmitFunction(FunctionDefinition* node);

@@ -12,7 +12,16 @@ uint8_t incrementNumber(uint8_t num)
 
 void main()
 {
-    playSound();
+    uint8_t a = 2;
+    uint8_t b = 1+2;
+    if(a == b)
+    {
+        //playSound();
+    }
+    else
+    {
+        playSound();
+    }
     
     uint8_t var1 = incrementNumber(3);
     uint8_t var2 = 2 + var1;
