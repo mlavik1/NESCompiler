@@ -163,14 +163,16 @@ public:
 */
 class ControlStatement : public Statement
 {
-    enum class EControlStatement
-    {
-        If, ElseIf, Else, While
-    };
 public:
-    EControlStatement mControlStatementType;
+    enum class EControlStatementType
+    {
+        If, While
+    };
+    EControlStatementType mControlStatementType;
     Expression* mExpression = nullptr;
-    Block* mBody = nullptr;
+    Node* mBody = nullptr;
+    // if => else
+    Node* mConnectedStatement = nullptr;
     virtual EStatementType GetStatementType() const override { return EStatementType::ControlStatement; };
 };
 

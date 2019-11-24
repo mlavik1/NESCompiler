@@ -17,11 +17,84 @@ uint16_t DataAllocator::RequestVarAddr(uint16_t bytes)
     return addr;
 }
 
+const char* CodeGenerator::GetLoadOpcode(const EProcReg reg)
+{
+    switch (reg)
+    {
+    case EProcReg::A:
+            return "LDA";
+    case EProcReg::X:
+        return "LDX";
+    case EProcReg::Y:
+        return "LDY";
+    }
+}
+
+const char* CodeGenerator::GetStoreOpcode(const EProcReg reg)
+{
+    switch (reg)
+    {
+    case EProcReg::A:
+        return "STA";
+    case EProcReg::X:
+        return "STX";
+    case EProcReg::Y:
+        return "STY";
+    }
+}
+
+const char* CodeGenerator::GetCmpOpcode(const EProcReg reg)
+{
+    switch (reg)
+    {
+    case EProcReg::A:
+        return "CMP";
+    case EProcReg::X:
+        return "CPX";
+    case EProcReg::Y:
+        return "CPY";
+    }
+}
+
+const char* CodeGenerator::GetAccArithOp(const EAccumulatorArithmeticOp op)
+{
+    switch (op)
+    {
+    case EAccumulatorArithmeticOp::ADC:
+        return "ADC";
+    case EAccumulatorArithmeticOp::SBC:
+        return "SBC";
+    case EAccumulatorArithmeticOp::AND:
+        return "AND";
+    }
+}
+
+const char* CodeGenerator::GetBranchOp(const EBranchType type)
+{
+    switch (type)
+    {
+    case EBranchType::BCS:
+        return "BCS";
+    case EBranchType::BEQ:
+        return "BEQ";
+    case EBranchType::BMI:
+        return "BMI";
+    case EBranchType::BNE:
+        return "BNE";
+    case EBranchType::BPL:
+        return "BPL";
+    }
+}
+
 CodeGenerator::CodeGenerator(CompilationUnit* compilationUnit, Emitter* emitter, DataAllocator* dataAllocator)
 {
     mCompilationUnit = compilationUnit;
     mEmitter = emitter;
     mDataAllocator = dataAllocator;
+
+    mRegisterContent[EProcReg::A] = EmitOperand();
+    mRegisterContent[EProcReg::X] = EmitOperand();
+    mRegisterContent[EProcReg::Y] = EmitOperand();
 
     // Register built-in types
     RegisterBuiltinSymbol("uint8_t", 1);
@@ -36,41 +109,208 @@ void CodeGenerator::RegisterBuiltinSymbol(std::string name, uint16_t size)
     mCompilationUnit->mSymbolTable[name] = sym;
 }
 
-uint16_t CodeGenerator::Emit(const std::string& op, const EAddressingMode addrMode, const EmitAddr addr)
+void CodeGenerator::ConvertToAddress(EmitOperand& operand)
 {
-    switch (addr.mType)
+    if (operand.mType == EOperandType::Value)
     {
-    /*case EmitAddr::EAddrType::Value:
-        return mEmitter->Emit(op.c_str(), addrMode, addr.mValue);
-        break;*/
-    case EmitAddr::EAddrType::CodeAddress:
-    case EmitAddr::EAddrType::DataAddress:
-    {
-        uint16_t bytesWritten = mEmitter->Emit(op.c_str(), addrMode, addr.mAddress);
-        if (addr.mType == EmitAddr::EAddrType::CodeAddress)
-            mCompilationUnit->mRelocationText.mRelativeAddresses.push_back(mEmitter->GetCurrentLocation() - 2);
-        return bytesWritten;
-        break;
+        EmitOperand src = operand;
+        operand.mType = EOperandType::DataAddress;
+        operand.mAddress = mDataAllocator->RequestVarAddr(1); // TODO: support more than 1 byte literals
+        EmitStore(src, operand);
     }
-    case EmitAddr::EAddrType::CodeSymbol:
-    case EmitAddr::EAddrType::DataSymbol:
+}
+
+void CodeGenerator::Emit(const char* op)
+{
+    mEmitter->Emit(op);
+}
+
+void CodeGenerator::EmitRelocatedAddress(const std::string& op, const EAddressingMode addrMode, const uint16_t operand)
+{
+    mEmitter->Emit(op.c_str(), addrMode, operand);
+    mCompilationUnit->mRelocationText.mRelativeAddresses.push_back(mEmitter->GetCurrentLocation() - 2);
+}
+
+void CodeGenerator::EmitRelocatedSymbol(const std::string& op, const EAddressingMode addrMode, const Symbol* sym, const uint16_t offset)
+{
+    mEmitter->Emit(op.c_str(), addrMode, sym->mAddress + offset);
+    if(sym->mAddrType == ESymAddrType::None)
+        mCompilationUnit->mRelocationText.mSymAddrRefs.push_back({ mEmitter->GetCurrentLocation() - 2, sym->mUniqueName });
+}
+
+
+void CodeGenerator::EmitLoad(const EProcReg reg, const EmitOperand operand)
+{
+    // TODO: We need to be absolutely sure that the address has not been written to since last load
+    if (memcmp(&mRegisterContent[reg], &operand, sizeof(EmitOperand)) == 0)
+        return;
+
+    const char* op = GetLoadOpcode(reg);
+
+    switch (operand.mType)
     {
-        if (addr.mRelativeSymbol->mAddrType == ESymAddrType::None)
-        {
-            uint16_t bytesWritten = mEmitter->Emit(op.c_str(), addrMode, addr.mAddress); // write relative address (offset from symbol addr)
-            mCompilationUnit->mRelocationText.mSymAddrRefs.push_back({ mEmitter->GetCurrentLocation() - 2, addr.mRelativeSymbol->mUniqueName });
-            return bytesWritten;
-        }
+    case EOperandType::None:
+        printf("ERROR: EmitLoad called with None address.\n");
+        return;
+    case EOperandType::Value:
+        mEmitter->Emit(op, EAddressingMode::Immediate, operand.mValue);
+        break;
+    case EOperandType::DataAddress:
+        if (operand.mRelativeSymbol != nullptr)
+            EmitRelocatedSymbol(op, EAddressingMode::Absolute, operand.mRelativeSymbol, operand.mAddress); 
         else
-        {
-            uint16_t bytesWritten = mEmitter->Emit(op.c_str(), addrMode, addr.mRelativeSymbol->mAddress);
-            if(addr.mType == EmitAddr::EAddrType::CodeSymbol)
-                mCompilationUnit->mRelocationText.mRelativeAddresses.push_back(mEmitter->GetCurrentLocation() - 2);
-            return bytesWritten;
-        }
+            mEmitter->Emit(op, EAddressingMode::Absolute, operand.mAddress);
+        break;
+    case EOperandType::CodeAddress:
+        if (operand.mRelativeSymbol != nullptr)
+            EmitRelocatedSymbol(op, EAddressingMode::Absolute, operand.mRelativeSymbol, operand.mAddress);
+        else
+            EmitRelocatedAddress(op, EAddressingMode::Absolute, operand.mAddress);
         break;
     }
+
+    mRegisterContent[reg] = operand;
+}
+
+void CodeGenerator::EmitStore(const EProcReg reg, const EmitOperand operand)
+{
+    const char* op = GetStoreOpcode(reg);
+
+    switch (operand.mType)
+    {
+    case EOperandType::None:
+        printf("ERROR: EmitLoad called with None address. STA/STX/STY must be called with memory address.\n");
+        return;
+    case EOperandType::Value:
+        printf("ERROR: EmitStore called with Value operand. STA/STX/STY must be called with memory address.\n");
+        return;
+    case EOperandType::DataAddress:
+        if (operand.mRelativeSymbol != nullptr)
+            EmitRelocatedSymbol(op, EAddressingMode::Absolute, operand.mRelativeSymbol, operand.mAddress);
+        else
+            mEmitter->Emit(op, EAddressingMode::Absolute, operand.mAddress);
+        break;
+    case EOperandType::CodeAddress:
+        if (operand.mRelativeSymbol != nullptr)
+            EmitRelocatedSymbol(op, EAddressingMode::Absolute, operand.mRelativeSymbol, operand.mAddress);
+        else
+            EmitRelocatedAddress(op, EAddressingMode::Absolute, operand.mAddress);
+        break;
     }
+
+    if (memcmp(&mRegisterContent[reg], &operand, sizeof(EmitOperand)) == 0)
+        mRegisterContent[reg] = EmitOperand();
+}
+
+void CodeGenerator::EmitStore(const EmitOperand src, const EmitOperand dst)
+{
+    EmitLoad(EProcReg::A, src);
+    EmitStore(EProcReg::A, dst);
+}
+
+void CodeGenerator::EmitBranch(EBranchType type, int8_t offset)
+{
+    const char* op = GetBranchOp(type);
+
+    const uint8_t absOffset = static_cast<uint8_t>(abs(offset));
+    if (absOffset > 127)
+    {
+        printf("ERROR: Control statement body too large. Max displacement exceeded.\n");
+        return;
+    }
+
+    const uint8_t displacement = (offset >= 0) ? (absOffset) : (absOffset | 0b10000000); // absolute offset, with first bit as sign bit
+    mEmitter->Emit(op, EAddressingMode::Immediate, displacement);
+}
+
+void CodeGenerator::EmitBranchAt(EBranchType type, uint8_t offset, uint16_t branchCodeAddr)
+{
+    uint16_t emitterLoc = mEmitter->GetCurrentLocation();
+    mEmitter->SetWritePos(branchCodeAddr);
+    EmitBranch(type, offset);
+    mEmitter->SetWritePos(emitterLoc);
+}
+
+void CodeGenerator::EmitCompare(EProcReg reg, EmitOperand operand1, EmitOperand operand2)
+{
+    // If content of second operand is already in register, swap the parameters
+    if (memcmp(&mRegisterContent[reg], &operand2, sizeof(EmitOperand)) == 0)
+    {
+        EmitCompare(reg, operand2, operand1);
+        return;
+    }
+
+    EmitLoad(reg, operand1);
+
+    EmitCompare(reg, operand2);
+}
+
+void CodeGenerator::EmitCompare(EProcReg reg, EmitOperand operand)
+{
+    const char* op = GetCmpOpcode(reg);
+
+    switch (operand.mType)
+    {
+    case EOperandType::None:
+        printf("ERROR: EmitCompare called with None address. It must be called with memory address or immediate value.\n");
+        assert(0);
+        return;
+    case EOperandType::Value:
+        mEmitter->Emit(op, EAddressingMode::Immediate, operand.mValue);
+        return;
+    case EOperandType::DataAddress:
+        if (operand.mRelativeSymbol != nullptr)
+            EmitRelocatedSymbol(op, EAddressingMode::Absolute, operand.mRelativeSymbol, operand.mAddress);
+        else
+            mEmitter->Emit(op, EAddressingMode::Absolute, operand.mAddress);
+        break;
+    case EOperandType::CodeAddress:
+        printf("ERROR: EmitCompare called with Code address. Why would you do that?\n");
+        assert(0);
+        break;
+    }
+}
+
+void CodeGenerator::EmitAcumulatorArithmetic(EAccumulatorArithmeticOp op, EmitOperand operand)
+{
+    const char* opString = GetAccArithOp(op);
+
+    switch (operand.mType)
+    {
+    case EOperandType::None:
+        printf("ERROR: EmitAcumulatorArithmetic called with None address.\n");
+        assert(0);
+        return;
+    case EOperandType::Value:
+        mEmitter->Emit(opString, EAddressingMode::Immediate, operand.mValue);
+        return;
+    case EOperandType::DataAddress:
+        if (operand.mRelativeSymbol != nullptr)
+            EmitRelocatedSymbol(opString, EAddressingMode::Absolute, operand.mRelativeSymbol, operand.mAddress);
+        else
+            mEmitter->Emit(opString, EAddressingMode::Absolute, operand.mAddress);
+        break;
+    case EOperandType::CodeAddress:
+        printf("ERROR: EmitAcumulatorArithmetic called with Code address. Why would you do that?\n");
+        assert(0);
+        break;
+    }
+
+    // Clear register content
+    mRegisterContent[EProcReg::A] = EmitOperand();
+}
+
+void CodeGenerator::EmitJump(EJumpType type, EmitOperand operand)
+{
+    assert(operand.mType == EOperandType::CodeAddress);
+
+    const char* op = type == EJumpType::JMP ? "JMP" : "JSR";
+
+
+    if (operand.mRelativeSymbol != nullptr)
+        EmitRelocatedSymbol(op, EAddressingMode::Absolute, operand.mRelativeSymbol, operand.mAddress);
+    else
+        EmitRelocatedAddress(op, EAddressingMode::Absolute, operand.mAddress);
 }
 
 void CodeGenerator::SetIdentifierSymSize(Symbol* sym)
@@ -90,98 +330,162 @@ void CodeGenerator::SetIdentifierSymSize(Symbol* sym)
     }
 }
 
-EmitAddr CodeGenerator::EmitExpression(Expression* node)
+EmitOperand CodeGenerator::EmitLiteralExpression(LiteralExpression* litExpr)
 {
-    EExpressionType type = node->GetExpressionType();
-    switch (type)
+    if (litExpr->mToken.mTokenType == ETokenType::IntegerLiteral)
     {
-    case EExpressionType::Literal:
-    {
-        LiteralExpression* litExpr = static_cast<LiteralExpression*>(node);
-        if (litExpr->mToken.mTokenType == ETokenType::IntegerLiteral)
-        {
-            assert(node->mValueType == "uint8_t");
-            uint8_t val = static_cast<uint8_t>(litExpr->mToken.mIntValue);
-            EmitAddr emitRes;
-            // TODO: Simply return value
-            //emitRes.mType = EmitAddr::EAddrType::Value;
-            //emitRes.mValue = val;
-            emitRes.mType = EmitAddr::EAddrType::DataAddress;
-            emitRes.mAddress = mDataAllocator->RequestVarAddr(1);
-            mEmitter->Emit("LDA", EAddressingMode::Immediate, val); // TODO
-            mEmitter->Emit("STA", EAddressingMode::Absolute, emitRes.mAddress); // TODO
-            return emitRes;
-        }
-        else
-            assert(0); // TODO: implement other types
-        break;
-    }
-    case EExpressionType::Identifier:
-    {
-        IdentifierExpression* identExpr = static_cast<IdentifierExpression*>(node);
-        Symbol* identSym = mCompilationUnit->mSymbolTable[identExpr->mIdentifier];
-        EmitAddr emitRes;
-        emitRes.mType = EmitAddr::EAddrType::DataSymbol;
-        emitRes.mRelativeSymbol = identSym;
-        emitRes.mAddress = 0;
+        assert(litExpr->mValueType == "uint8_t");
+        uint8_t val = static_cast<uint8_t>(litExpr->mToken.mIntValue);
+        EmitOperand emitRes;
+        emitRes.mType = EOperandType::Value;
+        emitRes.mValue = val;
         return emitRes;
-        break;
     }
-    case EExpressionType::FunctionCall:
-    {
-        FunctionCallExpression* callExrp = static_cast<FunctionCallExpression*>(node);
-        Symbol* funcSym = mCompilationUnit->mSymbolTable[callExrp->mFunction];
+    else
+        assert(0); // TODO: implement other types
+}
 
-        // Set parameters
-        Symbol* paramSym = funcSym->mChildren ? funcSym->mChildren->mTail : nullptr;
-        Expression* paramExpr = callExrp->mParameters;
-        while (paramExpr != nullptr)
+EmitOperand CodeGenerator::EmitIdentifierExpression(IdentifierExpression* identExpr)
+{
+    Symbol* identSym = mCompilationUnit->mSymbolTable[identExpr->mIdentifier];
+    return EmitOperand(EOperandType::DataAddress, 0, identSym);
+}
+
+EmitOperand CodeGenerator::EmitFuncCallExpression(FunctionCallExpression* callExrp)
+{
+    Symbol* funcSym = mCompilationUnit->mSymbolTable[callExrp->mFunction];
+
+    // Set parameters
+    Symbol* paramSym = funcSym->mChildren ? funcSym->mChildren->mTail : nullptr;
+    Expression* paramExpr = callExrp->mParameters;
+    while (paramExpr != nullptr)
+    {
+        // Parameter value expression
+        EmitOperand paramExprAddr = EmitExpression(paramExpr);
+
+        if (paramSym->mSize == 1)
+            EmitStore(paramExprAddr, EmitOperand(EOperandType::DataAddress, 0, paramSym));
+        else
         {
-            // Parameter value expression
-            EmitAddr paramExprAddr = EmitExpression(paramExpr);
+            // Ensure that the expression is stored in memory
+            ConvertToAddress(paramExprAddr);
 
             // Copy byte by byte
             uint16_t currOffset = 0;
             while (currOffset < paramSym->mSize)
             {
                 // Load value from expression into A register
-                EmitAddr exprChunkAddr = paramExprAddr;
+                EmitOperand exprChunkAddr = paramExprAddr;
                 exprChunkAddr.mAddress += currOffset;
-                Emit("LDA", EAddressingMode::Absolute, exprChunkAddr);
+                EmitLoad(EProcReg::A, exprChunkAddr);
+
                 // Store value of A in parameter symbol address
-                EmitAddr currParamAddr;
-                currParamAddr.mType = EmitAddr::EAddrType::DataSymbol;
-                currParamAddr.mRelativeSymbol = paramSym;
-                currParamAddr.mAddress = currOffset; // relative to sym addr (relocated later)
-                Emit("STA", EAddressingMode::Absolute, currParamAddr);
+                EmitOperand currParamAddr(EOperandType::DataAddress, currOffset, paramSym); // relative to sym addr (relocated later)
+                EmitStore(EProcReg::A, currParamAddr);
                 currOffset++;
             }
-
-            paramExpr = static_cast<Expression*>(paramExpr->mNext);
-            paramSym = paramSym->mNext;
         }
 
-        // Jump
-        EmitAddr jmpAddr;
-        jmpAddr.mType = EmitAddr::EAddrType::CodeSymbol;
-        jmpAddr.mRelativeSymbol = funcSym;
-        jmpAddr.mAddress = 0;
-        Emit("JSR", EAddressingMode::Absolute, jmpAddr);
+        paramExpr = static_cast<Expression*>(paramExpr->mNext);
+        paramSym = paramSym->mNext;
+    }
 
-        // Return value
-        if (funcSym->mTypeName != "void")
+    // Jump
+    EmitOperand jmpAddr(EOperandType::CodeAddress, funcSym->mAddress, funcSym);
+    EmitJump(EJumpType::JSR, jmpAddr);
+
+    // Return value
+    if (funcSym->mTypeName != "void")
+    {
+        EmitOperand funcRetAddr = mFuncRetAddrs[funcSym->mUniqueName];
+
+        return funcRetAddr;
+    }
+    else
+    {
+        EmitOperand voidAddr;
+        voidAddr.mType = EOperandType::None;
+        return voidAddr;
+    }
+}
+
+EmitOperand CodeGenerator::EmitBinOpExpression(BinaryOperationExpression* binOpExpr)
+{
+    Symbol* valSym = mCompilationUnit->mSymbolTable[binOpExpr->mValueType];
+
+    EmitOperand retAddr;
+    retAddr.mType = EOperandType::DataAddress;
+    retAddr.mAddress = mDataAllocator->RequestVarAddr(valSym->mSize);
+
+    EmitOperand leftExprAddr = EmitExpression(binOpExpr->mLeftOperand);
+    EmitOperand rightExprAddr = EmitExpression(binOpExpr->mRightOperand);
+
+    if (binOpExpr->mValueType == "uint8_t")
+    {
+        if (binOpExpr->mOperator == "+" || binOpExpr->mOperator == "-")
         {
-            EmitAddr funcRetAddr = mFuncRetAddrs[funcSym->mUniqueName];
-
-            return funcRetAddr;
+            EmitLoad(EProcReg::A, leftExprAddr);
+            if(binOpExpr->mOperator == "+")
+                EmitAcumulatorArithmetic(EAccumulatorArithmeticOp::ADC, rightExprAddr);
+            else
+                EmitAcumulatorArithmetic(EAccumulatorArithmeticOp::SBC, rightExprAddr);
+            EmitStore(EProcReg::A, retAddr);
         }
-        else
+        else if (binOpExpr->mOperator == "==" || binOpExpr->mOperator == "!=")
         {
-            EmitAddr voidAddr;
-            voidAddr.mType = EmitAddr::EAddrType::None;
-            return voidAddr;
-        }
+            EmitCompare(EProcReg::A, leftExprAddr, rightExprAddr);
+            // Branch
+            uint16_t branchAddr = mEmitter->GetCurrentLocation();
+            if (binOpExpr->mOperator == "==")
+                EmitBranch(EBranchType::BEQ, 0); // dummy address (0) is relocated below
+            else if(binOpExpr->mOperator == "!=")
+                EmitBranch(EBranchType::BNE, 0); // dummy address (0) is relocated below
+            // TODO: ">"  "<" (BMI)  ">=" (BPL)  "<="
 
+            // False case
+            EmitLoad(EProcReg::A, EmitOperand(EOperandType::Value, 0, nullptr));
+            uint16_t jmpAddr = mEmitter->GetCurrentLocation();
+            EmitJump(EJumpType::JMP, EmitOperand(EOperandType::CodeAddress, 0, nullptr)); // dummy address (0) is relocated below
+            // True case
+            uint16_t branchDest = mEmitter->GetCurrentLocation();
+            EmitLoad(EProcReg::A, EmitOperand(EOperandType::Value, 1, nullptr));
+            uint16_t jmpDest = mEmitter->GetCurrentLocation();
+
+            // Relocate branch/jump destination addresses
+            // TODO: Use EmitBranchAt(...) and EmitJumpAt(...)
+            const uint16_t branchNextLoc = branchAddr + 2; // instruction after branch
+            const uint8_t displacement = (branchDest >= branchNextLoc) ? (branchDest - branchNextLoc) : (branchNextLoc - branchDest) | 0b10000000;
+            mEmitter->EmitDataAtPos(branchAddr + 1, reinterpret_cast<const char*>(&displacement), sizeof(displacement));
+            mEmitter->EmitDataAtPos(jmpAddr + 1, reinterpret_cast<const char*>(&jmpDest), sizeof(jmpDest));
+
+            // Write result
+            EmitStore(EProcReg::A, EmitOperand(EOperandType::DataAddress, retAddr.mAddress, nullptr));
+        }
+    }
+    else
+        assert(0); // TODO: Implement other types
+
+    return retAddr;
+}
+
+EmitOperand CodeGenerator::EmitExpression(Expression* node)
+{
+    EExpressionType type = node->GetExpressionType();
+    switch (type)
+    {
+    case EExpressionType::Literal:
+    {
+        return EmitLiteralExpression(static_cast<LiteralExpression*>(node));
+        break;
+    }
+    case EExpressionType::Identifier:
+    {
+        return EmitIdentifierExpression(static_cast<IdentifierExpression*>(node));
+        break;
+    }
+    case EExpressionType::FunctionCall:
+    {
+        return EmitFuncCallExpression(static_cast<FunctionCallExpression*>(node));
         break;
     }
     case EExpressionType::UnaryOperation:
@@ -191,32 +495,61 @@ EmitAddr CodeGenerator::EmitExpression(Expression* node)
     }
     case EExpressionType::BinaryOperation:
     {
-        BinaryOperationExpression* binOpExpr = static_cast<BinaryOperationExpression*>(node);
-        Symbol* valSym = mCompilationUnit->mSymbolTable[binOpExpr->mValueType];
-
-        EmitAddr retAddr;
-        retAddr.mType = EmitAddr::EAddrType::DataAddress;
-        retAddr.mAddress = mDataAllocator->RequestVarAddr(valSym->mSize);
-
-        EmitAddr leftExprAddr = EmitExpression(binOpExpr->mLeftOperand);
-        EmitAddr rightExprAddr = EmitExpression(binOpExpr->mRightOperand);
-
-        if (binOpExpr->mValueType == "uint8_t")
-        {
-            Emit("LDA", EAddressingMode::Absolute, leftExprAddr);
-            Emit("ADC", EAddressingMode::Absolute, rightExprAddr);
-            Emit("STA", EAddressingMode::Absolute, retAddr);
-        }
-        else
-            assert(0); // TODO: Implement other types
-
-        return retAddr;
+        return EmitBinOpExpression(static_cast<BinaryOperationExpression*>(node));
 
         break;
     }
     default:
         assert(false);
     }
+}
+
+void CodeGenerator::EmitControlStatement(ControlStatement* node)
+{
+    uint16_t codeAddrStart = mEmitter->GetCurrentLocation();
+
+    // Emit condition expression
+    EmitOperand exprAddr = EmitExpression(node->mExpression);
+
+    EmitLoad(EProcReg::A, exprAddr);
+
+    uint16_t condBranchLoc = mEmitter->GetCurrentLocation();
+
+    EmitBranch(EBranchType::BEQ, 0); // relocated below
+
+    // Emit body content
+    EmitNode(node->mBody);
+
+    // Jump to end, after executing body
+    uint16_t jmpLoc = mEmitter->GetCurrentLocation();
+    EmitJump(EJumpType::JMP, EmitOperand(EOperandType::CodeAddress, 0, nullptr)); // relocated below
+
+    uint16_t branchDest = mEmitter->GetCurrentLocation();
+
+    // TODO: Use JMP if displacement is exceeded
+    if (std::abs(branchDest - condBranchLoc) > 127)
+        printf("ERROR: Control statement body too large. Max displacement exceeded.\n");
+
+    // Relocate branch destination address
+    const uint16_t branchNextLoc = condBranchLoc + 2;
+    const uint8_t branchDisplacement = static_cast<uint8_t>(branchDest - branchNextLoc);
+    mEmitter->EmitDataAtPos(condBranchLoc + 1, reinterpret_cast<const char*>(&branchDisplacement), sizeof(uint8_t));
+
+    // else { ... }
+    if (node->mControlStatementType == ControlStatement::EControlStatementType::If && node->mConnectedStatement != nullptr)
+    {
+        EmitNode(node->mConnectedStatement);
+    }
+
+    // while loop: jump back to condition check
+    if (node->mControlStatementType == ControlStatement::EControlStatementType::While)
+    {
+        EmitJump(EJumpType::JMP, EmitOperand(EOperandType::CodeAddress, condBranchLoc, nullptr));
+    }
+
+    // end (jump here after executing main body)
+    uint16_t endPos = mEmitter->GetCurrentLocation();
+    mEmitter->EmitDataAtPos(jmpLoc + 1, reinterpret_cast<const char*>(&endPos), sizeof(uint16_t));
 }
 
 void CodeGenerator::EmitStatement(Statement* node)
@@ -241,27 +574,37 @@ void CodeGenerator::EmitStatement(Statement* node)
         {
             assert(varDefStm->mExpression->mValueType == varDefStm->mType);
 
-            EmitAddr exprAddr = EmitExpression(varDefStm->mExpression);
+            EmitOperand exprAddr = EmitExpression(varDefStm->mExpression);
 
-            // Copy byte by byte
-            uint16_t currOffset = 0;
-            while (currOffset < typesym->mSize)
+            if (typesym->mSize == 1)
+                EmitStore(exprAddr, EmitOperand(EOperandType::DataAddress, 0, stmsym));
+            else
             {
-                // Load value from expression into A register
-                EmitAddr exprChunkAddr = exprAddr;
-                exprChunkAddr.mAddress += currOffset;
-                Emit("LDA", EAddressingMode::Absolute, exprChunkAddr);
+                // Ensure that the expression is stored in memory
+                ConvertToAddress(exprAddr);
 
-                // Store value of A in parameter symbol address
-                EmitAddr varChunkAddr;
-                varChunkAddr.mType = EmitAddr::EAddrType::DataSymbol;
-                varChunkAddr.mRelativeSymbol = stmsym;
-                varChunkAddr.mAddress = currOffset; // Relative to symbol address
-                Emit("STA", EAddressingMode::Absolute, varChunkAddr);
-                currOffset++;
+                // Copy byte by byte
+                uint16_t currOffset = 0;
+                while (currOffset < typesym->mSize)
+                {
+                    // Load value from expression into A register
+                    EmitOperand exprChunkAddr = exprAddr;
+                    exprChunkAddr.mAddress += currOffset;
+                    EmitLoad(EProcReg::A, exprChunkAddr);
+
+                    // Store value of A in parameter symbol address
+                    EmitOperand varChunkAddr(EOperandType::DataAddress, currOffset, stmsym);
+                    EmitStore(EProcReg::A, varChunkAddr);
+                    currOffset++;
+                }
             }
         }
 
+        break;
+    }
+    case EStatementType::ControlStatement:
+    {
+        EmitControlStatement(static_cast<ControlStatement*>(node));
         break;
     }
     case EStatementType::ReturnStatement:
@@ -270,13 +613,13 @@ void CodeGenerator::EmitStatement(Statement* node)
 
         if (retStm->mExpression != nullptr)
         {
-            EmitAddr retExprAddr = EmitExpression(retStm->mExpression);
+            EmitOperand retExprAddr = EmitExpression(retStm->mExpression);
 
             Symbol* funcSym = mCompilationUnit->mSymbolTable[retStm->mFunction];
             mFuncRetAddrs[funcSym->mUniqueName] = retExprAddr;
         }
 
-        mEmitter->Emit("RTS");
+        Emit("RTS");
 
         break;
     }
@@ -325,7 +668,7 @@ void CodeGenerator::EmitFunction(FunctionDefinition* node)
 
     // void return
     if (node->mType == "void")
-        mEmitter->Emit("RTS");
+        Emit("RTS");
 
     funcSym->mSize = mEmitter->GetCurrentLocation() - funcSym->mAddress;
 }
@@ -427,6 +770,16 @@ void CodeGenerator::EmitInlineAssembly(InlineAssemblyStatement* node)
     }
 }
 
+void CodeGenerator::EmitBlock(Block* node)
+{
+    Node* currNode = node->mNode;
+    while (currNode != nullptr)
+    {
+        EmitNode(currNode);
+        currNode = currNode->mNext;
+    }
+}
+
 void CodeGenerator::EmitNode(Node* node)
 {
     ENodeType nodeType = node->GetNodeType();
@@ -444,6 +797,9 @@ void CodeGenerator::EmitNode(Node* node)
         break;
     case ENodeType::InlineAssembly:
         EmitInlineAssembly(static_cast<InlineAssemblyStatement*>(node));
+        break;
+    case ENodeType::Block:
+        EmitBlock(static_cast<Block*>(node));
         break;
     }
 }

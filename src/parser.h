@@ -36,8 +36,11 @@ private:
 
     EParseResult ParseExpression(const OperatorInfo& inOperator, Expression** outExpression);
     EParseResult ParseExpressionStatement(Node** outNode);
+    EParseResult ParseBlock(Node** outNode);
     EParseResult ParseReturnStatement(Node** outNode);
     EParseResult ParseVariableDefinition(Node** outNode);
+    EParseResult ParseElseStatement(Node** outNode);
+    EParseResult ParseControlStatement(Node** outNode);
     EParseResult ParseStatement(Node** outNode);
     EParseResult ParseFunctionDefinition(Node** outNode);
     EParseResult ParseStructDefinition(Node** outNode);

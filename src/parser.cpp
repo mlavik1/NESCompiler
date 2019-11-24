@@ -1,5 +1,6 @@
 #include "parser.h"
 #include "debug.h"
+#include <cassert>
 
 Parser::Parser(TokenParser* tokenParser, CompilationUnit* compilationUnit)
 {
@@ -261,6 +262,32 @@ Parser::EParseResult Parser::ParseExpressionStatement(Node** outNode)
     return EParseResult::Parsed;
 }
 
+Parser::EParseResult Parser::ParseBlock(Node** outNode)
+{
+    if (mTokenParser->GetCurrentToken().mTokenString == "{")
+    {
+        Block* blockNode = new Block();
+        *outNode = blockNode;
+        mTokenParser->Advance();
+        Node** currNodePtr = &blockNode->mNode;
+        while (mTokenParser->GetCurrentToken().mTokenString != "}")
+        {
+            EParseResult contentParseResult = ParseNextNode(currNodePtr);
+            if (contentParseResult != EParseResult::Parsed)
+            {
+                printf("ERROR: Failed to parse statement block.");
+                return EParseResult::Error;
+            }
+            currNodePtr = &(*currNodePtr)->mNext;
+        }
+        mTokenParser->Advance();
+
+        return EParseResult::Parsed;
+    }
+    else
+        return EParseResult::NotParsed;
+}
+
 Parser::EParseResult Parser::ParseReturnStatement(Node** outNode)
 {
     const Token token = mTokenParser->GetCurrentToken();
@@ -325,10 +352,114 @@ Parser::EParseResult Parser::ParseVariableDefinition(Node** outNode)
     return EParseResult::Parsed;
 }
 
+Parser::EParseResult Parser::ParseElseStatement(Node** outNode)
+{
+    if (mTokenParser->GetCurrentToken().mTokenString != "else")
+        return EParseResult::NotParsed;
+
+    mTokenParser->Advance();
+
+    EParseResult contentParseRes = ParseStatement(outNode);
+    if (contentParseRes != EParseResult::Parsed)
+    {
+        printf("ERROR: else statement without content.");
+        return EParseResult::Error;
+    }
+    return contentParseRes;
+}
+
+Parser::EParseResult Parser::ParseControlStatement(Node** outNode)
+{
+    ControlStatement::EControlStatementType ctrlStmType;
+    
+    const Token identifierToken = mTokenParser->GetCurrentToken();
+
+    if (identifierToken.mTokenString == "if")
+    {
+        ctrlStmType = ControlStatement::EControlStatementType::If;
+        mTokenParser->Advance();
+    }
+    else if (identifierToken.mTokenString == "while")
+    {
+        ctrlStmType = ControlStatement::EControlStatementType::While;
+        mTokenParser->Advance();
+    }
+    else
+        return EParseResult::NotParsed;
+
+    if (mTokenParser->GetCurrentToken().mTokenString != "(")
+    {
+        printf("ERROR: Expected '(' after control statement");
+        return EParseResult::Error;
+    }
+
+    mTokenParser->Advance();
+
+    ControlStatement* ctrlStmNode = new ControlStatement();
+    ctrlStmNode->mControlStatementType = ctrlStmType;
+    *outNode = ctrlStmNode;
+
+    // Parse condition expression
+    EParseResult exprResult = ParseExpression(mDefaultOuterOperatorInfo, &ctrlStmNode->mExpression);
+    if (exprResult != EParseResult::Parsed)
+    {
+        OnError("Invalid control statement condition expression.");
+        return EParseResult::Error;
+    }
+
+    mTokenParser->Advance();
+
+    // Parse control statement body
+    EParseResult contentParseRes = ParseStatement(&ctrlStmNode->mBody);
+
+    if (contentParseRes != EParseResult::Parsed)
+    {
+        printf("ERROR: control statement without content.");
+        return EParseResult::Error;
+    }
+
+    // Parse else statement (for if conditions)
+    if (identifierToken.mTokenString == "if")
+    {
+        if (mTokenParser->GetCurrentToken().mTokenString == "else")
+        {
+            EParseResult elseParseRes = ParseElseStatement(&ctrlStmNode->mConnectedStatement);
+            if (elseParseRes != EParseResult::Parsed)
+            {
+                printf("ERROR: Failed to parse else statement.");
+                return EParseResult::Error;
+            }
+        }
+    }
+
+    return EParseResult::Parsed;
+}
+
 Parser::EParseResult Parser::ParseStatement(Node** outNode)
 {
+    // Block (" {...} ")
+    EParseResult parseResult = ParseBlock(outNode);
+    if (parseResult != EParseResult::NotParsed)
+    {
+        return parseResult;
+    }
+
+    // Control statement
+    parseResult = ParseControlStatement(outNode);
+    if (parseResult != EParseResult::NotParsed)
+    {
+        return parseResult;
+    }
+
+    // Inline assembly
+    parseResult = ParseInlineAssembly(outNode);
+    if (parseResult != EParseResult::NotParsed)
+    {
+        return parseResult;
+    }
+
     // Variable definition
-    EParseResult parseResult = ParseVariableDefinition(outNode);
+    parseResult = ParseVariableDefinition(outNode);
     if (parseResult != EParseResult::NotParsed)
     {
         return parseResult;
@@ -423,6 +554,7 @@ Parser::EParseResult Parser::ParseFunctionDefinition(Node** outNode)
                 OnError("Failed to parse function body.");
                 return EParseResult::Error;
             }
+            assert(*currNodePtr != nullptr); // should have been set if something was parsed
             currNodePtr = &(*currNodePtr)->mNext;
         }
     }
@@ -544,15 +676,8 @@ Parser::EParseResult Parser::ParseNextNode(Node** outNode)
     {
     case ETokenType::Identifier:
     {
-        // Inline assembly
-        EParseResult parseResult = ParseInlineAssembly(outNode);
-        if (parseResult != EParseResult::NotParsed)
-        {
-            return parseResult;
-        }
-
         // Struct  definition
-        parseResult = ParseStructDefinition(outNode);
+        EParseResult parseResult = ParseStructDefinition(outNode);
         if (parseResult != EParseResult::NotParsed)
         {
             return parseResult;

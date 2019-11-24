@@ -31,6 +31,7 @@ private:
     Symbol* VisitFuncDefNode(FunctionDefinition* node);
     Symbol* VisitExpressionStatement(ExpressionStatement* node);
     Symbol* VisitVarDefStatement(VarDefStatement* node);
+    Symbol* VisitControlStatement(ControlStatement* node);
     Symbol* VisitStatementNode(Statement* node);
     void VisitInlineAssemblyNode(InlineAssemblyStatement* node);
     void VisitExpression(Expression* node);
