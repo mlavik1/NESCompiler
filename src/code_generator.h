@@ -70,6 +70,10 @@ private:
 
     std::unordered_map<EProcReg, EmitOperand> mRegisterContent;
 
+    void CacheRegisterContent(EProcReg reg, EmitOperand val);
+    bool RegisterContains(EProcReg reg, EmitOperand val);
+    void ClearRegisterContentCache(EProcReg reg);
+
     const char* GetLoadOpcode(const EProcReg reg);
     const char* GetStoreOpcode(const EProcReg reg);
     const char* GetCmpOpcode(const EProcReg reg);
