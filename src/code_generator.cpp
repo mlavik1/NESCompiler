@@ -17,6 +17,26 @@ uint16_t DataAllocator::RequestVarAddr(uint16_t bytes)
     return addr;
 }
 
+void CodeGenerator::CacheRegisterContent(EProcReg reg, EmitOperand val)
+{
+    // TODO: Allow caching more than one operand.
+    // example case:
+    // LDA #1
+    // STA $0000
+    // STA $0001 => #1 == $0000 == $0001
+    mRegisterContent[reg] = val;
+}
+
+bool CodeGenerator::RegisterContains(EProcReg reg, EmitOperand val)
+{
+    return (memcmp(&mRegisterContent[reg], &val, sizeof(EmitOperand)) == 0);
+}
+
+void CodeGenerator::ClearRegisterContentCache(EProcReg reg)
+{
+    mRegisterContent[reg] = EmitOperand();
+}
+
 const char* CodeGenerator::GetLoadOpcode(const EProcReg reg)
 {
     switch (reg)
@@ -142,7 +162,7 @@ void CodeGenerator::EmitRelocatedSymbol(const std::string& op, const EAddressing
 void CodeGenerator::EmitLoad(const EProcReg reg, const EmitOperand operand)
 {
     // TODO: We need to be absolutely sure that the address has not been written to since last load
-    if (memcmp(&mRegisterContent[reg], &operand, sizeof(EmitOperand)) == 0)
+    if (RegisterContains(reg, operand))
         return;
 
     const char* op = GetLoadOpcode(reg);
@@ -169,7 +189,7 @@ void CodeGenerator::EmitLoad(const EProcReg reg, const EmitOperand operand)
         break;
     }
 
-    mRegisterContent[reg] = operand;
+    CacheRegisterContent(reg, operand);
 }
 
 void CodeGenerator::EmitStore(const EProcReg reg, const EmitOperand operand)
@@ -198,8 +218,8 @@ void CodeGenerator::EmitStore(const EProcReg reg, const EmitOperand operand)
         break;
     }
 
-    if (memcmp(&mRegisterContent[reg], &operand, sizeof(EmitOperand)) == 0)
-        mRegisterContent[reg] = EmitOperand();
+    if (RegisterContains(reg, operand))
+        ClearRegisterContentCache(reg);
 }
 
 void CodeGenerator::EmitStore(const EmitOperand src, const EmitOperand dst)
@@ -297,7 +317,7 @@ void CodeGenerator::EmitAcumulatorArithmetic(EAccumulatorArithmeticOp op, EmitOp
     }
 
     // Clear register content
-    mRegisterContent[EProcReg::A] = EmitOperand();
+    ClearRegisterContentCache(EProcReg::A);
 }
 
 void CodeGenerator::EmitJump(EJumpType type, EmitOperand operand)
