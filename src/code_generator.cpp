@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <sstream>
 #include <algorithm>
+#include <cstring>
 
 uint16_t DataAllocator::RequestVarAddr(uint16_t bytes)
 {

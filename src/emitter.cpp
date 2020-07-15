@@ -1,6 +1,7 @@
 #include "emitter.h"
 #include "debug.h"
 #include  <iomanip>
+#include <cstring>
 
 Emitter::Emitter(OpcodeTranslator* opcodeTranslator)
 {

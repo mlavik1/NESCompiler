@@ -1,6 +1,7 @@
 #include "linker.h"
 #include <cstdio>
 #include <fstream>
+#include <cstring>
 
 Linker::Linker(Emitter* emitter)
 {

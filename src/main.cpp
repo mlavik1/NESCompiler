@@ -9,6 +9,7 @@
 #include "opcode.h"
 #include "linker.h"
 #include <vector>
+#include <cstring>
 
 int main(int args, char** argv)
 {
