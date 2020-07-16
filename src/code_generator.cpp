@@ -155,8 +155,7 @@ void CodeGenerator::EmitRelocatedAddress(const std::string& op, const EAddressin
 void CodeGenerator::EmitRelocatedSymbol(const std::string& op, const EAddressingMode addrMode, const Symbol* sym, const uint16_t offset)
 {
     mEmitter->Emit(op.c_str(), addrMode, sym->mAddress + offset);
-    if(sym->mAddrType == ESymAddrType::None)
-        mCompilationUnit->mRelocationText.mSymAddrRefs.push_back({ mEmitter->GetCurrentLocation() - 2, sym->mUniqueName });
+    mCompilationUnit->mRelocationText.mSymAddrRefs.push_back({ mEmitter->GetCurrentLocation() - 2, sym->mUniqueName });
 }
 
 
@@ -178,7 +177,7 @@ void CodeGenerator::EmitLoad(const EProcReg reg, const EmitOperand operand)
         break;
     case EOperandType::DataAddress:
         if (operand.mRelativeSymbol != nullptr)
-            EmitRelocatedSymbol(op, EAddressingMode::Absolute, operand.mRelativeSymbol, operand.mAddress); 
+            EmitRelocatedSymbol(op, EAddressingMode::Absolute, operand.mRelativeSymbol, operand.mAddress);
         else
             mEmitter->Emit(op, EAddressingMode::Absolute, operand.mAddress);
         break;
@@ -464,12 +463,12 @@ EmitOperand CodeGenerator::EmitBinOpExpression(BinaryOperationExpression* binOpE
             // TODO: ">"  "<" (BMI)  ">=" (BPL)  "<="
 
             // False case
-            EmitLoad(EProcReg::A, EmitOperand(EOperandType::Value, 0, nullptr));
+            EmitLoad(EProcReg::A, EmitOperand(EOperandType::Value, 1, nullptr));
             uint16_t jmpAddr = mEmitter->GetCurrentLocation();
             EmitJump(EJumpType::JMP, EmitOperand(EOperandType::CodeAddress, 0, nullptr)); // dummy address (0) is relocated below
             // True case
             uint16_t branchDest = mEmitter->GetCurrentLocation();
-            EmitLoad(EProcReg::A, EmitOperand(EOperandType::Value, 1, nullptr));
+            EmitLoad(EProcReg::A, EmitOperand(EOperandType::Value, 0, nullptr));
             uint16_t jmpDest = mEmitter->GetCurrentLocation();
 
             // Relocate branch/jump destination addresses
@@ -673,7 +672,7 @@ void CodeGenerator::EmitFunction(FunctionDefinition* node)
         Symbol* paramSym = mCompilationUnit->mSymbolTable[currParam->mName];
         SetIdentifierSymSize(paramSym);
         // Set address
-        paramSym->mAddrType = ESymAddrType::Relative;
+        paramSym->mAddrType = ESymAddrType::Absolute;
         paramSym->mAddress = mDataAllocator->RequestVarAddr(paramSym->mSize);
 
         currParam = static_cast<VarDefStatement*>(currParam->mNext);

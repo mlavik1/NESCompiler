@@ -20,7 +20,7 @@ bool Linker::Link(const std::vector<CompilationUnit*> compUnits)
         for (auto symPair : compUnit->mSymbolTable)
         {
             const ESymbolType symType = symPair.second->mSymbolType;
-            if ((symType == ESymbolType::Function || symType == ESymbolType::Variable) && symPair.second->mAddrType != ESymAddrType::None)
+            if ((symType == ESymbolType::Function || symType == ESymbolType::Variable || symType == ESymbolType::FuncParam) && symPair.second->mAddrType != ESymAddrType::None)
             {
                 if (mSymbolTable.find(symPair.first) != mSymbolTable.end())
                 {
