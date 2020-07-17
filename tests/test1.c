@@ -33,18 +33,19 @@ void main()
 
 void playSound()
 {
-    __asm lda #$ff
+    uint8_t lala = 253; // #$FD
+    __asm LDA lala
+    __asm STA $4015
+
+    __asm lda #$3F
     __asm sta $4000
 
-    __asm lda #$db
+    __asm lda #$3F
     __asm sta $4001
 
-    __asm lda #$a5
+    __asm lda #$FB
     __asm sta $4002
 
-    __asm lda #$ab
+    __asm lda #$F9
     __asm sta $4003
-
-    __asm lda #$01
-    __asm sta $4015
 }
