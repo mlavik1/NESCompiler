@@ -106,7 +106,9 @@ public:
     EmitOperand EmitBinOpExpression(BinaryOperationExpression* binOpExpr);
     EmitOperand EmitExpression(Expression* node);
     void EmitControlStatement(ControlStatement* node);
-    void EmitStatement(Statement* node);
+	void EmitIfControlStatement(ControlStatement* node);
+	void EmitWhileControlStatement(ControlStatement* node);
+	void EmitStatement(Statement* node);
     void EmitFunction(FunctionDefinition* node);
     void EmitStruct(StructDefinition* node);
     void EmitInlineAssembly(InlineAssemblyStatement* node);

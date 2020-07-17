@@ -463,12 +463,12 @@ EmitOperand CodeGenerator::EmitBinOpExpression(BinaryOperationExpression* binOpE
             // TODO: ">"  "<" (BMI)  ">=" (BPL)  "<="
 
             // False case
-            EmitLoad(EProcReg::A, EmitOperand(EOperandType::Value, 1, nullptr));
+            EmitLoad(EProcReg::A, EmitOperand(EOperandType::Value, 0, nullptr));
             uint16_t jmpAddr = mEmitter->GetCurrentLocation();
             EmitJump(EJumpType::JMP, EmitOperand(EOperandType::CodeAddress, 0, nullptr)); // dummy address (0) is relocated below
             // True case
             uint16_t branchDest = mEmitter->GetCurrentLocation();
-            EmitLoad(EProcReg::A, EmitOperand(EOperandType::Value, 0, nullptr));
+            EmitLoad(EProcReg::A, EmitOperand(EOperandType::Value, 1, nullptr));
             uint16_t jmpDest = mEmitter->GetCurrentLocation();
 
             // Relocate branch/jump destination addresses
@@ -481,6 +481,10 @@ EmitOperand CodeGenerator::EmitBinOpExpression(BinaryOperationExpression* binOpE
             // Write result
             EmitStore(EProcReg::A, EmitOperand(EOperandType::DataAddress, retAddr.mAddress, nullptr));
         }
+		else if (binOpExpr->mOperator == "=")
+		{
+			EmitStore(rightExprAddr, leftExprAddr);
+		}
     }
     else
         assert(0); // TODO: Implement other types
@@ -526,50 +530,91 @@ EmitOperand CodeGenerator::EmitExpression(Expression* node)
 
 void CodeGenerator::EmitControlStatement(ControlStatement* node)
 {
-    uint16_t codeAddrStart = mEmitter->GetCurrentLocation();
+	if (node->mControlStatementType == ControlStatement::EControlStatementType::If)
+	{
+		EmitIfControlStatement(node);
+	}
+	else if (node->mControlStatementType == ControlStatement::EControlStatementType::While)
+	{
+		EmitWhileControlStatement(node);
+	}
+	else
+	{
+		throw std::exception("Control statement not implemented");
+	}
+}
 
-    // Emit condition expression
-    EmitOperand exprAddr = EmitExpression(node->mExpression);
+void CodeGenerator::EmitIfControlStatement(ControlStatement* node)
+{
+	uint16_t codeAddrStart = mEmitter->GetCurrentLocation();
 
-    EmitLoad(EProcReg::A, exprAddr);
+	// Emit condition expression
+	EmitOperand exprAddr = EmitExpression(node->mExpression);
 
-    uint16_t condBranchLoc = mEmitter->GetCurrentLocation();
+	EmitLoad(EProcReg::A, exprAddr);
 
-    EmitBranch(EBranchType::BEQ, 0); // relocated below
+	uint16_t condBranchLoc = mEmitter->GetCurrentLocation();
 
-    // Emit body content
-    EmitNode(node->mBody);
+	EmitBranch(EBranchType::BEQ, 0); // relocated below
 
-    // Jump to end, after executing body
-    uint16_t jmpLoc = mEmitter->GetCurrentLocation();
-    EmitJump(EJumpType::JMP, EmitOperand(EOperandType::CodeAddress, 0, nullptr)); // relocated below
+	// Emit body content
+	EmitNode(node->mBody);
 
-    uint16_t branchDest = mEmitter->GetCurrentLocation();
+	// Jump to end, after executing body
+	uint16_t jmpLoc = mEmitter->GetCurrentLocation();
+	EmitJump(EJumpType::JMP, EmitOperand(EOperandType::CodeAddress, 0, nullptr)); // relocated below
 
-    // TODO: Use JMP if displacement is exceeded
-    if (std::abs(branchDest - condBranchLoc) > 127)
-        printf("ERROR: Control statement body too large. Max displacement exceeded.\n");
+	uint16_t branchDest = mEmitter->GetCurrentLocation();
 
-    // Relocate branch destination address
-    const uint16_t branchNextLoc = condBranchLoc + 2;
-    const uint8_t branchDisplacement = static_cast<uint8_t>(branchDest - branchNextLoc);
-    mEmitter->EmitDataAtPos(condBranchLoc + 1, reinterpret_cast<const char*>(&branchDisplacement), sizeof(uint8_t));
+	// TODO: Use JMP if displacement is exceeded
+	if (std::abs(branchDest - condBranchLoc) > 127)
+		printf("ERROR: Control statement body too large. Max displacement exceeded.\n");
 
-    // else { ... }
-    if (node->mControlStatementType == ControlStatement::EControlStatementType::If && node->mConnectedStatement != nullptr)
-    {
-        EmitNode(node->mConnectedStatement);
-    }
+	// Relocate branch destination address
+	const uint16_t branchNextLoc = condBranchLoc + 2;
+	const uint8_t branchDisplacement = static_cast<uint8_t>(branchDest - branchNextLoc);
+	mEmitter->EmitDataAtPos(condBranchLoc + 1, reinterpret_cast<const char*>(&branchDisplacement), sizeof(uint8_t));
 
-    // while loop: jump back to condition check
-    if (node->mControlStatementType == ControlStatement::EControlStatementType::While)
-    {
-        EmitJump(EJumpType::JMP, EmitOperand(EOperandType::CodeAddress, condBranchLoc, nullptr));
-    }
+	// else { ... }
+	if (node->mConnectedStatement != nullptr)
+	{
+		EmitNode(node->mConnectedStatement);
+	}
 
-    // end (jump here after executing main body)
-    uint16_t endPos = mEmitter->GetCurrentLocation();
-    mEmitter->EmitDataAtPos(jmpLoc + 1, reinterpret_cast<const char*>(&endPos), sizeof(uint16_t));
+	// end (jump here after executing main body)
+	uint16_t endPos = mEmitter->GetCurrentLocation();
+	mEmitter->EmitDataAtPos(jmpLoc + 1, reinterpret_cast<const char*>(&endPos), sizeof(uint16_t));
+}
+
+void CodeGenerator::EmitWhileControlStatement(ControlStatement* node)
+{
+	uint16_t codeAddrStart = mEmitter->GetCurrentLocation();
+
+	// Emit condition expression
+	EmitOperand exprAddr = EmitExpression(node->mExpression);
+
+	EmitLoad(EProcReg::A, exprAddr);
+
+	uint16_t condBranchLoc = mEmitter->GetCurrentLocation();
+
+	EmitBranch(EBranchType::BEQ, 0); // relocated below
+
+	// Emit body content
+	EmitNode(node->mBody);
+
+	// jump back to start (after body)
+	EmitJump(EJumpType::JMP, EmitOperand(EOperandType::CodeAddress, codeAddrStart, nullptr));
+
+	uint16_t branchDest = mEmitter->GetCurrentLocation();
+
+	// TODO: Use JMP if displacement is exceeded
+	if (std::abs(branchDest - condBranchLoc) > 127)
+		printf("ERROR: Control statement body too large. Max displacement exceeded.\n");
+
+	// Relocate branch destination address
+	const uint16_t branchNextLoc = condBranchLoc + 2;
+	const uint8_t branchDisplacement = static_cast<uint8_t>(branchDest - branchNextLoc);
+	mEmitter->EmitDataAtPos(condBranchLoc + 1, reinterpret_cast<const char*>(&branchDisplacement), sizeof(uint8_t));
 }
 
 void CodeGenerator::EmitStatement(Statement* node)

@@ -4,30 +4,32 @@ struct myStruct
 };
 
 void playSound();
+void changeNote();
 
 uint8_t incrementNumber(uint8_t num)
 {
-    return num + 9;
+    return num + 1;
 }
+
+uint8_t note;
+uint8_t counter;
 
 void main()
 {
-    uint8_t a = 2;
-    uint8_t b = 1+2;
-    if(a == b)
-    {
-        playSound();
-    }
-    else
-    {
-        playSound();
-    }
-    
-    uint8_t var1 = incrementNumber(3);
-    uint8_t var2 = 2 + var1;
-    //var2 = 4;
+	note = 0;
+	counter = 0;
+	
+    playSound();
+	
     while(1 == 1)
     {
+		counter = counter + 1;
+		if(counter == 250)
+		{
+			note = incrementNumber(note);
+			counter = 0;
+			changeNote();
+		}
     }
 }
 
@@ -48,4 +50,10 @@ void playSound()
 
     __asm lda #$F9
     __asm sta $4003
+}
+
+void changeNote()
+{
+    __asm lda note
+    __asm sta $4002
 }
