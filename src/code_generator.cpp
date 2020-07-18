@@ -3,6 +3,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cstring>
+#include <exception>
 
 uint16_t DataAllocator::RequestVarAddr(uint16_t bytes)
 {
@@ -540,7 +541,7 @@ void CodeGenerator::EmitControlStatement(ControlStatement* node)
 	}
 	else
 	{
-		throw std::exception("Control statement not implemented");
+        throw std::invalid_argument("Control statement not implemented");
 	}
 }
 

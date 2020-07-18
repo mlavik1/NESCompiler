@@ -19,24 +19,24 @@ uint8_t counter;
 
 void main()
 {
-	note = 0;
-	counter = 0;
-	
+    note = 0;
+    counter = 0;
+    
     play_sound();
-	
+    
     while(1 == 1)
     {
-		uint8_t ctrlval = read_ctrl_0();
-		if(ctrlval != CTRL_BUTTON_A)
-		{
-			counter = counter + 1;
-		}
-		if(counter == 250)
-		{
-			note = increment_number(note);
-			counter = 0;
-			change_note();
-		}
+        uint8_t ctrlval = read_ctrl_0();
+        if(ctrlval != CTRL_BUTTON_A)
+        {
+            counter = counter + 1;
+        }
+        if(counter == 250)
+        {
+            note = increment_number(note);
+            counter = 0;
+            change_note();
+        }
     }
 }
 
