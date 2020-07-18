@@ -5,11 +5,11 @@ struct myStruct
     uint8_t myVar;
 };
 
-void playSound();
-void changeNote();
+void play_sound();
+void change_note();
 uint8_t readController();
 
-uint8_t incrementNumber(uint8_t num)
+uint8_t increment_number(uint8_t num)
 {
     return num + 1;
 }
@@ -22,25 +22,25 @@ void main()
 	note = 0;
 	counter = 0;
 	
-    playSound();
+    play_sound();
 	
     while(1 == 1)
     {
 		uint8_t ctrlval = read_ctrl_0();
-		if(ctrlval != 128)
+		if(ctrlval != CTRL_BUTTON_A)
 		{
 			counter = counter + 1;
 		}
 		if(counter == 250)
 		{
-			note = incrementNumber(note);
+			note = increment_number(note);
 			counter = 0;
-			changeNote();
+			change_note();
 		}
     }
 }
 
-void playSound()
+void play_sound()
 {
     uint8_t lala = 253; // #$FD
     __asm LDA lala
@@ -59,7 +59,7 @@ void playSound()
     __asm sta $4003
 }
 
-void changeNote()
+void change_note()
 {
     __asm lda note
     __asm sta $4002

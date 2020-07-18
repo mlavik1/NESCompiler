@@ -32,7 +32,7 @@ private:
    TokenParser& mTokenParser;
    std::string mFileDir;
    std::stack<PreprocessorScope> mScopeStack;
-   std::unordered_map<std::string, std::string> mDefinitions;
+   std::unordered_map<std::string, Token> mDefinitions;
    std::vector<Token> mPreprocessedTokens;
 
    PreprocessorDirective GetPreprocessorDirective(const std::string& inToken);
@@ -42,6 +42,6 @@ private:
 public:
    Preprocessor(TokenParser& inTokenParser, std::string fileDir);
 
-   void AddDefinition(const std::string name, const std::string value);
+   void AddDefinition(std::string name, Token token);
    void Preprocess();
 };

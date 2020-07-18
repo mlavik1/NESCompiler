@@ -60,10 +60,9 @@ void Preprocessor::ProcessToken(Token inToken)
             mTokenParser.Advance();
             const Token defNameToken = mTokenParser.GetCurrentToken();
             mTokenParser.Advance();
-            const Token defValToken = mTokenParser.GetCurrentToken();
             std::string defName = defNameToken.mTokenString;
-            std::string defVal = defValToken.mTokenType == ETokenType::NewLine ? "" : defValToken.mTokenString;
-            AddDefinition(defName, defVal);
+            const Token defValToken = mTokenParser.GetCurrentToken();
+            AddDefinition(defName, defValToken);
          }
          break;
       }
@@ -135,7 +134,7 @@ void Preprocessor::ProcessToken(Token inToken)
          auto defIter = mDefinitions.find(inToken.mTokenString);
          if (defIter != mDefinitions.end())
          {
-            inToken.mTokenString = defIter->second;
+            inToken = defIter->second;
          }
       }
       // push preprocessed token
@@ -144,9 +143,9 @@ void Preprocessor::ProcessToken(Token inToken)
    }
 }
 
-void Preprocessor::AddDefinition(const std::string name, const std::string value)
+void Preprocessor::AddDefinition(std::string name, Token token)
 {
-   mDefinitions.emplace(name, value);
+   mDefinitions.emplace(name, token);
 }
 
 void Preprocessor::Preprocess()
