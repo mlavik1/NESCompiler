@@ -26,6 +26,7 @@ private:
     std::unordered_map<std::string, OperatorInfo> mUnaryPrefixOperatorsMap;
     std::unordered_map<std::string, OperatorInfo> mUnaryPostfixOperatorsMap;
     std::unordered_map<std::string, OperatorInfo> mBinaryOperatorsMap;
+	std::set<std::string> mNoOperandOpcodes;
 
     OperatorInfo mDefaultOuterOperatorInfo = { "", 999, EOperatorAssociativity::LeftToRight };
 

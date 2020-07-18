@@ -155,8 +155,7 @@ void CodeGenerator::EmitRelocatedAddress(const std::string& op, const EAddressin
 void CodeGenerator::EmitRelocatedSymbol(const std::string& op, const EAddressingMode addrMode, const Symbol* sym, const uint16_t offset)
 {
     mEmitter->Emit(op.c_str(), addrMode, sym->mAddress + offset);
-    if(sym->mAddrType == ESymAddrType::None)
-        mCompilationUnit->mRelocationText.mSymAddrRefs.push_back({ mEmitter->GetCurrentLocation() - 2, sym->mUniqueName });
+    mCompilationUnit->mRelocationText.mSymAddrRefs.push_back({ mEmitter->GetCurrentLocation() - 2, sym->mUniqueName });
 }
 
 
@@ -178,7 +177,7 @@ void CodeGenerator::EmitLoad(const EProcReg reg, const EmitOperand operand)
         break;
     case EOperandType::DataAddress:
         if (operand.mRelativeSymbol != nullptr)
-            EmitRelocatedSymbol(op, EAddressingMode::Absolute, operand.mRelativeSymbol, operand.mAddress); 
+            EmitRelocatedSymbol(op, EAddressingMode::Absolute, operand.mRelativeSymbol, operand.mAddress);
         else
             mEmitter->Emit(op, EAddressingMode::Absolute, operand.mAddress);
         break;
@@ -482,6 +481,10 @@ EmitOperand CodeGenerator::EmitBinOpExpression(BinaryOperationExpression* binOpE
             // Write result
             EmitStore(EProcReg::A, EmitOperand(EOperandType::DataAddress, retAddr.mAddress, nullptr));
         }
+		else if (binOpExpr->mOperator == "=")
+		{
+			EmitStore(rightExprAddr, leftExprAddr);
+		}
     }
     else
         assert(0); // TODO: Implement other types
@@ -527,50 +530,91 @@ EmitOperand CodeGenerator::EmitExpression(Expression* node)
 
 void CodeGenerator::EmitControlStatement(ControlStatement* node)
 {
-    uint16_t codeAddrStart = mEmitter->GetCurrentLocation();
+	if (node->mControlStatementType == ControlStatement::EControlStatementType::If)
+	{
+		EmitIfControlStatement(node);
+	}
+	else if (node->mControlStatementType == ControlStatement::EControlStatementType::While)
+	{
+		EmitWhileControlStatement(node);
+	}
+	else
+	{
+		throw std::exception("Control statement not implemented");
+	}
+}
 
-    // Emit condition expression
-    EmitOperand exprAddr = EmitExpression(node->mExpression);
+void CodeGenerator::EmitIfControlStatement(ControlStatement* node)
+{
+	uint16_t codeAddrStart = mEmitter->GetCurrentLocation();
 
-    EmitLoad(EProcReg::A, exprAddr);
+	// Emit condition expression
+	EmitOperand exprAddr = EmitExpression(node->mExpression);
 
-    uint16_t condBranchLoc = mEmitter->GetCurrentLocation();
+	EmitLoad(EProcReg::A, exprAddr);
 
-    EmitBranch(EBranchType::BEQ, 0); // relocated below
+	uint16_t condBranchLoc = mEmitter->GetCurrentLocation();
 
-    // Emit body content
-    EmitNode(node->mBody);
+	EmitBranch(EBranchType::BEQ, 0); // relocated below
 
-    // Jump to end, after executing body
-    uint16_t jmpLoc = mEmitter->GetCurrentLocation();
-    EmitJump(EJumpType::JMP, EmitOperand(EOperandType::CodeAddress, 0, nullptr)); // relocated below
+	// Emit body content
+	EmitNode(node->mBody);
 
-    uint16_t branchDest = mEmitter->GetCurrentLocation();
+	// Jump to end, after executing body
+	uint16_t jmpLoc = mEmitter->GetCurrentLocation();
+	EmitJump(EJumpType::JMP, EmitOperand(EOperandType::CodeAddress, 0, nullptr)); // relocated below
 
-    // TODO: Use JMP if displacement is exceeded
-    if (std::abs(branchDest - condBranchLoc) > 127)
-        printf("ERROR: Control statement body too large. Max displacement exceeded.\n");
+	uint16_t branchDest = mEmitter->GetCurrentLocation();
 
-    // Relocate branch destination address
-    const uint16_t branchNextLoc = condBranchLoc + 2;
-    const uint8_t branchDisplacement = static_cast<uint8_t>(branchDest - branchNextLoc);
-    mEmitter->EmitDataAtPos(condBranchLoc + 1, reinterpret_cast<const char*>(&branchDisplacement), sizeof(uint8_t));
+	// TODO: Use JMP if displacement is exceeded
+	if (std::abs(branchDest - condBranchLoc) > 127)
+		printf("ERROR: Control statement body too large. Max displacement exceeded.\n");
 
-    // else { ... }
-    if (node->mControlStatementType == ControlStatement::EControlStatementType::If && node->mConnectedStatement != nullptr)
-    {
-        EmitNode(node->mConnectedStatement);
-    }
+	// Relocate branch destination address
+	const uint16_t branchNextLoc = condBranchLoc + 2;
+	const uint8_t branchDisplacement = static_cast<uint8_t>(branchDest - branchNextLoc);
+	mEmitter->EmitDataAtPos(condBranchLoc + 1, reinterpret_cast<const char*>(&branchDisplacement), sizeof(uint8_t));
 
-    // while loop: jump back to condition check
-    if (node->mControlStatementType == ControlStatement::EControlStatementType::While)
-    {
-        EmitJump(EJumpType::JMP, EmitOperand(EOperandType::CodeAddress, condBranchLoc, nullptr));
-    }
+	// else { ... }
+	if (node->mConnectedStatement != nullptr)
+	{
+		EmitNode(node->mConnectedStatement);
+	}
 
-    // end (jump here after executing main body)
-    uint16_t endPos = mEmitter->GetCurrentLocation();
-    mEmitter->EmitDataAtPos(jmpLoc + 1, reinterpret_cast<const char*>(&endPos), sizeof(uint16_t));
+	// end (jump here after executing main body)
+	uint16_t endPos = mEmitter->GetCurrentLocation();
+	mEmitter->EmitDataAtPos(jmpLoc + 1, reinterpret_cast<const char*>(&endPos), sizeof(uint16_t));
+}
+
+void CodeGenerator::EmitWhileControlStatement(ControlStatement* node)
+{
+	uint16_t codeAddrStart = mEmitter->GetCurrentLocation();
+
+	// Emit condition expression
+	EmitOperand exprAddr = EmitExpression(node->mExpression);
+
+	EmitLoad(EProcReg::A, exprAddr);
+
+	uint16_t condBranchLoc = mEmitter->GetCurrentLocation();
+
+	EmitBranch(EBranchType::BEQ, 0); // relocated below
+
+	// Emit body content
+	EmitNode(node->mBody);
+
+	// jump back to start (after body)
+	EmitJump(EJumpType::JMP, EmitOperand(EOperandType::CodeAddress, codeAddrStart, nullptr));
+
+	uint16_t branchDest = mEmitter->GetCurrentLocation();
+
+	// TODO: Use JMP if displacement is exceeded
+	if (std::abs(branchDest - condBranchLoc) > 127)
+		printf("ERROR: Control statement body too large. Max displacement exceeded.\n");
+
+	// Relocate branch destination address
+	const uint16_t branchNextLoc = condBranchLoc + 2;
+	const uint8_t branchDisplacement = static_cast<uint8_t>(branchDest - branchNextLoc);
+	mEmitter->EmitDataAtPos(condBranchLoc + 1, reinterpret_cast<const char*>(&branchDisplacement), sizeof(uint8_t));
 }
 
 void CodeGenerator::EmitStatement(Statement* node)
@@ -673,7 +717,7 @@ void CodeGenerator::EmitFunction(FunctionDefinition* node)
         Symbol* paramSym = mCompilationUnit->mSymbolTable[currParam->mName];
         SetIdentifierSymSize(paramSym);
         // Set address
-        paramSym->mAddrType = ESymAddrType::Relative;
+        paramSym->mAddrType = ESymAddrType::Absolute;
         paramSym->mAddress = mDataAllocator->RequestVarAddr(paramSym->mSize);
 
         currParam = static_cast<VarDefStatement*>(currParam->mNext);
@@ -729,27 +773,15 @@ void CodeGenerator::EmitInlineAssembly(InlineAssemblyStatement* node)
         const bool isSym = opSymIter != mCompilationUnit->mSymbolTable.end();
         const bool isVal = node->mOp1[0] == '#';
         const bool isHex = node->mOp1[isVal ? 1 : 0] == '$';
+		const bool isAccum = node->mOp1 == "A";
         const std::string opValStr = node->mOp1.substr((isVal ? 1 : 0) + (isHex ? 1 : 0));
 
-        assert(isSym || isVal || isHex);
-
-        // Get operand value
-        unsigned int opVal;
-        if (isSym)
-        {
-            opVal = static_cast<unsigned int>(opSymIter->second->mAddress);
-        }
-        else if (isHex)
-        {
-            std::stringstream ss;
-            ss << std::hex << opValStr;
-            ss >> opVal;
-        }
-        else
-            opVal = std::stoi(opValStr);
-
         // Get addressing mode
-        if (isVal)
+		if (node->mOp1 == "")
+		{
+			addrMode = EAddressingMode::Implied;
+		}
+        else if (isVal)
         {
             addrMode = EAddressingMode::Immediate;
         }
@@ -757,6 +789,10 @@ void CodeGenerator::EmitInlineAssembly(InlineAssemblyStatement* node)
         {
             addrMode = EAddressingMode::Absolute;
         }
+		else if (isAccum)
+		{
+			addrMode = EAddressingMode::Accumulator;
+		}
         else
         {
             assert(isHex);
@@ -787,7 +823,23 @@ void CodeGenerator::EmitInlineAssembly(InlineAssemblyStatement* node)
             }
         }
         assert(addrMode != -1);
-        mEmitter->Emit(node->mOpcodeName.c_str(), addrMode, static_cast<uint16_t>(opVal));
+        
+		// Get operand value
+		unsigned int opVal = 0;
+		if (isSym)
+		{
+			opVal = static_cast<unsigned int>(opSymIter->second->mAddress);
+		}
+		else if (isHex)
+		{
+			std::stringstream ss;
+			ss << std::hex << opValStr;
+			ss >> opVal;
+		}
+		else if(addrMode != EAddressingMode::Implied && addrMode != EAddressingMode::Accumulator)
+			opVal = std::stoi(opValStr);
+		
+		mEmitter->Emit(node->mOpcodeName.c_str(), addrMode, static_cast<uint16_t>(opVal));
     }
 }
 

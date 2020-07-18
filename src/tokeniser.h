@@ -13,7 +13,9 @@ enum class ETokenType
     BooleanLiteral,
     Operator,
     PreprocessorDirective,
-    Identifier
+    Identifier,
+    StringLiteral,
+    NewLine
 };
 
 class Token
@@ -59,4 +61,7 @@ public:
     const Token& GetTokenFromOffset(const int inOffset);
     bool HasMoreTokens();
     void SetTokens(std::vector<Token>& inTokens);
+
+    size_t GetCurrentTokenIndex() { return mCurrentTokenIndex; };
+    std::vector<Token>& GetTokens() { return mTokens; };
 };
