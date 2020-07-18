@@ -1,3 +1,5 @@
+#include "controller.h"
+
 struct myStruct
 {
     uint8_t myVar;
@@ -5,6 +7,7 @@ struct myStruct
 
 void playSound();
 void changeNote();
+uint8_t readController();
 
 uint8_t incrementNumber(uint8_t num)
 {
@@ -23,7 +26,11 @@ void main()
 	
     while(1 == 1)
     {
-		counter = counter + 1;
+		uint8_t ctrlval = read_ctrl_0();
+		if(ctrlval != 128)
+		{
+			counter = counter + 1;
+		}
 		if(counter == 250)
 		{
 			note = incrementNumber(note);
@@ -57,3 +64,4 @@ void changeNote()
     __asm lda note
     __asm sta $4002
 }
+

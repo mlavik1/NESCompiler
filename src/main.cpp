@@ -10,6 +10,7 @@
 #include "linker.h"
 #include <vector>
 #include <cstring>
+#include "preprocessor.h"
 
 int main(int args, char** argv)
 {
@@ -51,10 +52,21 @@ int main(int args, char** argv)
         std::ifstream fileStream(filePath);
         std::string fileContents((std::istreambuf_iterator<char>(fileStream)), std::istreambuf_iterator<char>());
 
+        std::string fileDir = "";
+        const size_t last_slash_idx = filePath.find_last_of("\\/");
+        if (std::string::npos != last_slash_idx)
+        {
+           fileDir = filePath.substr(0, last_slash_idx);
+        }
+
         CompilationUnit* compUnit = new CompilationUnit();
 
         // Tokenise
         TokenParser tokenParser(fileContents.c_str());
+
+        // Tokenise
+        Preprocessor preprocessor(tokenParser, fileDir);
+        preprocessor.Preprocess();
 
         // Parse
         Parser parser(&tokenParser, compUnit);

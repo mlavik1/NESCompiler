@@ -35,6 +35,11 @@ Parser::Parser(TokenParser* tokenParser, CompilationUnit* compilationUnit)
     mBinaryOperatorsMap.emplace("+=", OperatorInfo{ "+=", 16, EOperatorAssociativity::LeftToRight });
     mBinaryOperatorsMap.emplace("-=", OperatorInfo{ "-=", 16, EOperatorAssociativity::LeftToRight });
 
+	mNoOperandOpcodes.insert("clc");
+	mNoOperandOpcodes.insert("sei");
+	mNoOperandOpcodes.insert("inx");
+	mNoOperandOpcodes.insert("iny");
+
     mTokenParser = tokenParser;
     mCompilationUnit = compilationUnit;
 }
@@ -458,6 +463,13 @@ Parser::EParseResult Parser::ParseStatement(Node** outNode)
         return parseResult;
     }
 
+	// Return statement
+	parseResult = ParseReturnStatement(outNode);
+	if (parseResult != EParseResult::NotParsed)
+	{
+		return parseResult;
+	}
+
     // Variable definition
     parseResult = ParseVariableDefinition(outNode);
     if (parseResult != EParseResult::NotParsed)
@@ -467,13 +479,6 @@ Parser::EParseResult Parser::ParseStatement(Node** outNode)
 
     // Expression statement
     parseResult = ParseExpressionStatement(outNode);
-    if (parseResult != EParseResult::NotParsed)
-    {
-        return parseResult;
-    }
-
-    // Return statement
-    parseResult = ParseReturnStatement(outNode);
     if (parseResult != EParseResult::NotParsed)
     {
         return parseResult;
@@ -655,15 +660,19 @@ Parser::EParseResult Parser::ParseInlineAssembly(Node** outNode)
 
     node->mOpcodeName = mTokenParser->GetCurrentToken().mTokenString;
     mTokenParser->Advance();
-    node->mOp1 = mTokenParser->GetCurrentToken().mTokenString;
+	// Parse operands
+	if (mNoOperandOpcodes.find(node->mOpcodeName) == mNoOperandOpcodes.end())
+	{
+		node->mOp1 = mTokenParser->GetCurrentToken().mTokenString;
 
-    if (mTokenParser->GetCurrentToken().mTokenString == ",")
-    {
-        mTokenParser->Advance();
-        node->mOp2 = mTokenParser->GetCurrentToken().mTokenString;
-    }
+		if (mTokenParser->GetCurrentToken().mTokenString == ",")
+		{
+			mTokenParser->Advance();
+			node->mOp2 = mTokenParser->GetCurrentToken().mTokenString;
+		}
 
-    mTokenParser->Advance();
+		mTokenParser->Advance();
+	}
 
     return EParseResult::Parsed;
 }

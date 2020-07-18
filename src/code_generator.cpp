@@ -773,27 +773,15 @@ void CodeGenerator::EmitInlineAssembly(InlineAssemblyStatement* node)
         const bool isSym = opSymIter != mCompilationUnit->mSymbolTable.end();
         const bool isVal = node->mOp1[0] == '#';
         const bool isHex = node->mOp1[isVal ? 1 : 0] == '$';
+		const bool isAccum = node->mOp1 == "A";
         const std::string opValStr = node->mOp1.substr((isVal ? 1 : 0) + (isHex ? 1 : 0));
 
-        assert(isSym || isVal || isHex);
-
-        // Get operand value
-        unsigned int opVal;
-        if (isSym)
-        {
-            opVal = static_cast<unsigned int>(opSymIter->second->mAddress);
-        }
-        else if (isHex)
-        {
-            std::stringstream ss;
-            ss << std::hex << opValStr;
-            ss >> opVal;
-        }
-        else
-            opVal = std::stoi(opValStr);
-
         // Get addressing mode
-        if (isVal)
+		if (node->mOp1 == "")
+		{
+			addrMode = EAddressingMode::Implied;
+		}
+        else if (isVal)
         {
             addrMode = EAddressingMode::Immediate;
         }
@@ -801,6 +789,10 @@ void CodeGenerator::EmitInlineAssembly(InlineAssemblyStatement* node)
         {
             addrMode = EAddressingMode::Absolute;
         }
+		else if (isAccum)
+		{
+			addrMode = EAddressingMode::Accumulator;
+		}
         else
         {
             assert(isHex);
@@ -831,7 +823,23 @@ void CodeGenerator::EmitInlineAssembly(InlineAssemblyStatement* node)
             }
         }
         assert(addrMode != -1);
-        mEmitter->Emit(node->mOpcodeName.c_str(), addrMode, static_cast<uint16_t>(opVal));
+        
+		// Get operand value
+		unsigned int opVal = 0;
+		if (isSym)
+		{
+			opVal = static_cast<unsigned int>(opSymIter->second->mAddress);
+		}
+		else if (isHex)
+		{
+			std::stringstream ss;
+			ss << std::hex << opValStr;
+			ss >> opVal;
+		}
+		else if(addrMode != EAddressingMode::Implied && addrMode != EAddressingMode::Accumulator)
+			opVal = std::stoi(opValStr);
+		
+		mEmitter->Emit(node->mOpcodeName.c_str(), addrMode, static_cast<uint16_t>(opVal));
     }
 }
 

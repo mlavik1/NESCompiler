@@ -21,12 +21,21 @@ Token Tokeniser::ParseToken()
     Token outToken;
 
     // Remove whitespaces and tabs from beginning
-    while (*mSourceStringPos == ' ' || *mSourceStringPos == '\t' || *mSourceStringPos == '\n')
+    while (*mSourceStringPos == ' ' || *mSourceStringPos == '\t')
     {
         if(*mSourceStringPos == '\n')
             mLineNumber++; // count linebreaks
         mSourceStringPos++;
     }
+
+    if (*mSourceStringPos == '\n')
+        {
+            mSourceStringPos++;
+            mLineNumber++; // count linebreaks
+            outToken.mTokenType = ETokenType::NewLine;
+            outToken.mTokenString = "\n";
+            return outToken;
+        }
 
     // End of file
     if (*mSourceStringPos == 0)
@@ -37,6 +46,7 @@ Token Tokeniser::ParseToken()
 
     const char* tokenStart = mSourceStringPos;
 
+    bool isStringLiteral = false;
     bool isNumericLiteral = false;
     bool isFloatLiteral = false;
     bool isPunctuator = false;
@@ -44,7 +54,12 @@ Token Tokeniser::ParseToken()
     const char* commentStartPos;
 
     // Evaluate the first character
-    if (isdigit(*mSourceStringPos))
+    if (*mSourceStringPos == '"')
+    {
+       isStringLiteral = true;
+       mSourceStringPos++;
+    }
+    else if (isdigit(*mSourceStringPos))
     {
         isNumericLiteral = true;
     }
@@ -72,6 +87,14 @@ Token Tokeniser::ParseToken()
                 mLineNumber++;
                 break;
             }
+        }
+        else if (isStringLiteral)
+        {
+           if (*mSourceStringPos == '"')
+           {
+              mSourceStringPos++;
+              break;
+           }
         }
         else if (isPunctuator)
         {
@@ -116,7 +139,11 @@ Token Tokeniser::ParseToken()
 
     outToken.mTokenString = std::string(tokenStart, tokenEnd - tokenStart);
 
-    if (isNumericLiteral && isFloatLiteral)
+    if (isStringLiteral)
+    {
+       outToken.mTokenType = ETokenType::StringLiteral;
+    }
+    else if (isNumericLiteral && isFloatLiteral)
     {
         outToken.mTokenType = ETokenType::FloatLiteral;
         outToken.mFloatValue = strtof(outToken.mTokenString.c_str(), nullptr);
